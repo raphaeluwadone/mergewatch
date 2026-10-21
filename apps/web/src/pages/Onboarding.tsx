@@ -35,6 +35,11 @@ export function OnboardingJira() {
             {result === 'not_configured' ? 'Jira isn’t set up on this server yet (JIRA_CLIENT_ID is missing). Skip for now.' : 'Jira didn’t connect. You can try again or skip for now.'}
           </div>
         )}
+        {config && !config.jiraConfigured && !result && (
+          <div className="notice" style={{ background: 'var(--surface-2)', color: 'var(--text-soft)' }}>
+            Jira isn’t set up on this server yet. Add JIRA_CLIENT_ID and JIRA_CLIENT_SECRET to .env to enable it.
+          </div>
+        )}
         <div className="stack">
           {config?.jiraConfigured && (
             <a className="btn btn-primary btn-block" href="/auth/jira/connect?next=onboarding">

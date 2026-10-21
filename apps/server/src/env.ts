@@ -31,8 +31,8 @@ const demoMode = process.env.DEMO_MODE === '1';
 
 export const env = {
   root: ROOT,
-  port: int('PORT', 8787),
-  appUrl: str('APP_URL', 'http://localhost:5173'),
+  port: int('API_PORT', 8787),
+  appUrl: str('APP_URL', 'http://localhost:5180'),
   databasePath: path.resolve(ROOT, str('DATABASE_PATH', 'data/mergewatch.db')),
   /** 32 bytes, base64. Encrypts GitHub and Jira tokens at rest. */
   encryptionKey: str('ENCRYPTION_KEY'),

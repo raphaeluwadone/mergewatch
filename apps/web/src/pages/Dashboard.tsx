@@ -148,7 +148,8 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
 
   const firstRun = !!data && all.length === 0 && data.trackedRepoCount === 0 && !data.syncing;
   const loading = !data || (data.syncing && all.length === 0);
-  const needsCount = needs.length;
+  // The headline is about the user, not the current filter view.
+  const needsCount = all.filter((p) => !p.muted && p.section === 'needs').length;
 
   return (
     <div className="app">

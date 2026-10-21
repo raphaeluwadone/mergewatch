@@ -7,12 +7,12 @@ import { GithubMark, Mark, Wordmark } from '../components/icons.tsx';
 const ERRORS: Record<string, { title: string; body: (org: string) => string; denied?: boolean }> = {
   not_member: {
     title: 'Access denied',
-    body: (org) => `Mergewatch is limited to members of the ${org} GitHub organization. The account you signed in with isn't a member.`,
+    body: (org) => `Mergewatch is limited to members of ${org}. The account you signed in with isn't a member.`,
     denied: true,
   },
   org_restricted: {
     title: 'Waiting on organization approval',
-    body: (org) => `${org} hasn't approved Mergewatch for third-party access yet. Ask an org owner to approve it in the organization's OAuth app settings, then try again.`,
+    body: (org) => `${org[0]!.toUpperCase()}${org.slice(1)} hasn't approved Mergewatch for third-party access yet. Ask an org owner to approve it in the organization's OAuth app settings, then try again.`,
     denied: true,
   },
   cancelled: { title: 'Sign-in cancelled', body: () => 'You cancelled on GitHub. Try again when you are ready.' },
@@ -26,7 +26,7 @@ export function SignIn() {
   const { data: config } = useConfig();
   const qc = useQueryClient();
   const error = ERRORS[params.get('error') ?? ''];
-  const org = config?.org ?? 'the allowed';
+  const org = config?.org ? `the ${config.org} GitHub organization` : 'the allowed GitHub organization';
 
   return (
     <div className="auth-wrap">

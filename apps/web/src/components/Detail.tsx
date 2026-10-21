@@ -82,6 +82,14 @@ export function Detail({ id, mode, onClose }: { id: string; mode: 'panel' | 'pag
     closeRef.current?.focus();
   }, [id]);
 
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !document.querySelector('.modal-wrap')) onClose();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const act = async (path: string, body?: unknown, message?: string) => {
     await post(`/api/prs/${id}/${path}`, body);
     refresh();

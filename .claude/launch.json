@@ -2,10 +2,13 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "mergewatch",
+      "name": "mergewatch-dev",
       "runtimeExecutable": "pnpm",
-      "runtimeArgs": ["dev"],
-      "port": 5173
+      "runtimeArgs": [
+        "dev"
+      ],
+      "port": 5180,
+      "autoPort": false
     }
   ]
 }
