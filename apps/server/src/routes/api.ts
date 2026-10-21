@@ -3,7 +3,7 @@ import { streamSSE } from 'hono/streaming';
 import { and, eq, inArray, max } from 'drizzle-orm';
 import { parsePrUrl, type AddPrPreview, type DashboardResponse, type Me, type Settings, type Source } from '@mergewatch/shared';
 import { db } from '../db/client.ts';
-import { events, prSources, prs, trackedRepos, users } from '../db/schema.ts';
+import { events, prSources, prs, sessions, trackedRepos, users } from '../db/schema.ts';
 import { decrypt } from '../crypto.ts';
 import { requireUser, type AppEnv, type User } from '../auth/session.ts';
 import { disconnectJira } from '../auth/jira.ts';
@@ -291,6 +291,14 @@ api.post('/jira/disconnect', (c) => {
     .map((r) => r.prId);
   if (jiraOnly.length) db.delete(prSources).where(and(inArray(prSources.prId, jiraOnly), eq(prSources.source, 'jira'))).run();
   requestSync(userId);
+  return c.json({ ok: true });
+});
+
+/** Forgets the GitHub token and ends every session; the user signs in again to reconnect. */
+api.post('/github/disconnect', (c) => {
+  const userId = c.get('user').id;
+  db.update(users).set({ githubTokenEnc: null }).where(eq(users.id, userId)).run();
+  db.delete(sessions).where(eq(sessions.userId, userId)).run();
   return c.json({ ok: true });
 });
 

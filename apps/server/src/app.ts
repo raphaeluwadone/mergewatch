@@ -20,6 +20,9 @@ if (env.demoMode) app.route('/auth', demoAuth);
 app.route('/api', api);
 
 app.get('/health', (c) => c.json({ ok: true }));
+app.get('/auth/config', (c) =>
+  c.json({ demo: env.demoMode, githubConfigured: !!env.github.clientId, jiraConfigured: !!env.jira.clientId, org: env.github.allowedOrg }),
+);
 
 app.onError((err, c) => {
   if (err instanceof HTTPException) return err.getResponse();
