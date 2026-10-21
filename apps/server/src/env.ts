@@ -39,7 +39,8 @@ export const env = {
   github: {
     clientId: demoMode ? optional('GITHUB_CLIENT_ID') : str('GITHUB_CLIENT_ID'),
     clientSecret: demoMode ? optional('GITHUB_CLIENT_SECRET') : str('GITHUB_CLIENT_SECRET'),
-    allowedOrg: str('GITHUB_ALLOWED_ORG', 'EnfluxInc'),
+    /** Optional. When set, only members of this GitHub org can sign in. */
+    allowedOrg: optional('GITHUB_ALLOWED_ORG'),
   },
   jira: {
     clientId: optional('JIRA_CLIENT_ID'),

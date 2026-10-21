@@ -11,13 +11,14 @@ import { endSession, startSession } from './session.ts';
 import { requestSync } from '../sync/poller.ts';
 
 // OAuth Apps have no read-only repo scope; Mergewatch only ever makes read calls with this token.
-const SCOPES = 'repo read:org';
+const scopes = () => (env.github.allowedOrg ? 'repo read:org' : 'repo');
 const callbackUrl = () => `${env.appUrl}/auth/github/callback`;
 const signinError = (code: string) => `${env.appUrl}/signin?error=${code}`;
 
 type Membership = 'member' | 'not_member' | 'org_restricted';
 
 async function orgMembership(token: string): Promise<Membership> {
+  if (!env.github.allowedOrg) return 'member';
   try {
     const m = await rest<{ state: string }>(token, `/user/memberships/orgs/${env.github.allowedOrg}`);
     return m.state === 'active' ? 'member' : 'not_member';
@@ -36,7 +37,7 @@ githubAuth.get('/github/login', (c) => {
   const url = new URL('https://github.com/login/oauth/authorize');
   url.searchParams.set('client_id', env.github.clientId);
   url.searchParams.set('redirect_uri', callbackUrl());
-  url.searchParams.set('scope', SCOPES);
+  url.searchParams.set('scope', scopes());
   url.searchParams.set('state', createState('github'));
   url.searchParams.set('allow_signup', 'false');
   return c.redirect(url.toString());

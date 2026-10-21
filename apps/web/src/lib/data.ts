@@ -8,7 +8,7 @@ export interface AppConfig {
   demo: boolean;
   githubConfigured: boolean;
   jiraConfigured: boolean;
-  org: string;
+  org: string | null;
 }
 
 export type SettingsResponse = Settings & { jiraSite: string | null; githubLogin: string };

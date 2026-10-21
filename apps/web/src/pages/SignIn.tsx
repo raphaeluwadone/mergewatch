@@ -26,7 +26,7 @@ export function SignIn() {
   const { data: config } = useConfig();
   const qc = useQueryClient();
   const error = ERRORS[params.get('error') ?? ''];
-  const org = config?.org ?? 'EnfluxInc';
+  const org = config?.org ?? 'the allowed';
 
   return (
     <div className="auth-wrap">
@@ -64,7 +64,7 @@ export function SignIn() {
           )}
         </div>
         <p className="small">
-          For members of {org}. Mergewatch only reads your repos and pull requests. It never writes to GitHub.
+          {config?.org ? `For members of ${config.org}. ` : ''}Mergewatch only reads your repos and pull requests. It never writes to GitHub.
         </p>
       </div>
     </div>
