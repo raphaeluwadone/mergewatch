@@ -49,7 +49,7 @@ export const env = {
   agent: {
     provider: optional('AGENT_PROVIDER'),
     anthropicApiKey: optional('ANTHROPIC_API_KEY'),
-    model: str('AGENT_MODEL', 'claude-sonnet-5'),
+    model: str('AGENT_MODEL', 'claude-opus-5'),
   },
   /** Seeded sample data and a password-less local login. Never enable outside your own machine. */
   demoMode,

@@ -20,7 +20,7 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export function isStale(snap: PrSnapshot, ctx: Pick<DiffContext, 'now' | 'staleDays' | 'role'>): boolean {
   if (snap.state !== 'open' || snap.isDraft) return false;
-  if (ctx.role === 'reviewer') return false;
+  if (ctx.role === 'reviewer' || ctx.role === 'watching') return false;
   const ageMs = ctx.now.getTime() - new Date(snap.updatedAt).getTime();
   return ageMs >= ctx.staleDays * 24 * 60 * 60 * 1000;
 }

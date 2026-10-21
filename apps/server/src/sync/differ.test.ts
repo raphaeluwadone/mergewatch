@@ -139,6 +139,8 @@ describe('deriveStatus', () => {
     expect(deriveStatus(snap({ checks: [{ name: 'x', status: 'running', durationSec: null, url: null, jobId: 1 }] }), 'author', false)).toBe('running');
     expect(deriveStatus(snap({ reviewDecision: 'approved' }), 'author', false)).toBe('approved');
     expect(deriveStatus(snap({ author: 'x' }), 'watching', false)).toBe('manual');
+    expect(deriveStatus(snap({ author: 'x', checks: [{ name: 'x', status: 'running', durationSec: null, url: null, jobId: 1 }] }), 'watching', false)).toBe('manual');
+    expect(deriveStatus(snap({ author: 'x', mergeState: 'conflict' }), 'watching', false)).toBe('conflict');
     expect(deriveStatus(snap({ state: 'merged' }), 'author', false)).toBe('merged');
     expect(deriveStatus(snap(), 'author', true)).toBe('stale');
   });

@@ -31,10 +31,11 @@ export function deriveStatus(snap: PrSnapshot, role: Role, stale: boolean): PrSt
   if (snap.mergeState === 'conflict') return 'conflict';
   if (checks.failed > 0) return 'failed';
   if (snap.reviewDecision === 'changes_requested') return 'changes';
+  // A watched PR only surfaces for problems; otherwise it reads as "Watching".
+  if (role === 'watching') return 'manual';
   if (stale) return 'stale';
   if (checks.running > 0) return 'running';
   if (snap.reviewDecision === 'approved') return 'approved';
-  if (role === 'watching') return 'manual';
   return 'waiting';
 }
 
