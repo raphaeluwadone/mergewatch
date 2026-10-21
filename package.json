@@ -1,0 +1,25 @@
+{
+  "name": "mergewatch",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.34.7",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter @mergewatch/server --filter @mergewatch/web dev",
+    "dev:server": "pnpm --filter @mergewatch/server dev",
+    "dev:web": "pnpm --filter @mergewatch/web dev",
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck",
+    "db:migrate": "pnpm --filter @mergewatch/server db:migrate",
+    "db:generate": "pnpm --filter @mergewatch/server db:generate",
+    "seed:demo": "pnpm --filter @mergewatch/server seed:demo"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.5"
+  }
+}
