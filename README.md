@@ -40,6 +40,14 @@ If an organization restricts third-party OAuth apps, its private repos stay hidd
 3. Authorization callback URL `http://localhost:5180/auth/jira/callback`.
 4. Put the client ID and secret in `.env` as `JIRA_CLIENT_ID` and `JIRA_CLIENT_SECRET`, then connect from onboarding or Settings.
 
+## Notifications
+
+Push notifications reach you even when no Mergewatch tab is open, as long as the browser is running. Turn them on in **Settings > Notifications > Enable on this browser**.
+
+You get one per PR per sync, for anything that needs you, comments from others, approvals, merges and Jira assignments. Quiet hours and muted PRs are respected.
+
+Browsers can't play custom notification sounds, so on a Mac the server plays your chosen sound (a macOS sound or an uploaded file) with `afplay` and the notification itself stays silent.
+
 ## The agent
 
 The agent explains failed checks. It is off until `AGENT_PROVIDER=anthropic` and `ANTHROPIC_API_KEY` are set. Logs are redacted (`apps/server/src/agent/redact.ts`) before anything is sent. Confirm the provider is approved for your organization's data before turning it on.
