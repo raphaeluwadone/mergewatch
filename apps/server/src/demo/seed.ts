@@ -46,7 +46,7 @@ db.transaction((tx) => {
     }
     let lastSeen = 0;
     for (const e of [...f.events].sort((a, b) => b.hoursAgo - a.hoursAgo)) {
-      const id = tx.insert(events).values({ prId, type: e.type, severity: e.severity, text: e.text, createdAt: ago(e.hoursAgo) }).returning({ id: events.id }).get().id;
+      const id = tx.insert(events).values({ prId, type: e.type, severity: e.severity, text: e.text, detail: e.detail ?? null, createdAt: ago(e.hoursAgo) }).returning({ id: events.id }).get().id;
       if (!e.unread) lastSeen = id;
     }
     tx.update(prs).set({ lastSeenEventId: lastSeen }).where(eq(prs.id, prId)).run();

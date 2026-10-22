@@ -89,6 +89,7 @@ export const events = sqliteTable(
     type: text('type').notNull(),
     severity: text('severity', { enum: ['attention', 'info', 'noise'] }).notNull(),
     text: text('text').notNull(),
+    detail: text('detail'),
     createdAt: text('created_at').notNull().default(now),
   },
   (t) => [index('events_pr').on(t.prId, t.id)],

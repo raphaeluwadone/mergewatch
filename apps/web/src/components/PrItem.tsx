@@ -40,6 +40,23 @@ export function AgentLine({ pr }: { pr: PrView }) {
   );
 }
 
+export function CommentLine({ pr }: { pr: PrView }) {
+  const c = pr.latestComment;
+  if (!c) return null;
+  // The change-request line already quotes this reviewer's note.
+  if (pr.review && pr.review.reviewer === c.author && pr.review.excerpt.startsWith(c.excerpt.slice(0, 40))) return null;
+  const file = c.path ? c.path.split('/').pop() : null;
+  return (
+    <div className={`comment-line${c.unread ? ' unread' : ''}`}>
+      {c.unread && <span className="unread-dot" aria-label="New" />}
+      <span>
+        <strong>{c.author}</strong>
+        {file && <span className="comment-file mono"> on {file}</span>}: {c.excerpt}
+      </span>
+    </div>
+  );
+}
+
 export function PrItem({ pr, index, focused, highlighted, onOpen, action }: Props) {
   const meta = STATUS[pr.status];
   const quiet = pr.section === 'green';
@@ -84,6 +101,7 @@ export function PrItem({ pr, index, focused, highlighted, onOpen, action }: Prop
             {pr.review.comments ? ` · ${pr.review.comments} comments` : ''}
           </div>
         )}
+        {!quiet && <CommentLine pr={pr} />}
         {pr.detail && <div className="pr-line" style={quiet ? { fontSize: 12, color: 'var(--text-mute)' } : undefined}>{pr.detail}</div>}
         {!quiet && <div className="pr-checks mono">{checksLine(pr.checks)}</div>}
       </div>

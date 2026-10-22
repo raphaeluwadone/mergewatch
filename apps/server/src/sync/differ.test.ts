@@ -96,8 +96,20 @@ describe('diffSnapshots', () => {
       ],
     });
     expect(diffSnapshots(snap(), next, ctx)).toEqual([
-      { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez' },
-      { type: 'new_comment', severity: 'noise', text: 'You commented' },
+      { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez', detail: 'hi' },
+      { type: 'new_comment', severity: 'noise', text: 'You commented', detail: 'hey' },
+    ]);
+  });
+
+  it('names the file for inline review comments and ignores comments older than the last poll', () => {
+    const next = snap({
+      latestComments: [
+        { author: 'mchen', createdAt: '2026-10-19T09:00:00Z', body: 'old, newly fetched', url: null, path: null },
+        { author: 'jalvarez', createdAt: '2026-10-20T11:40:00Z', body: '**Use** the shared helper', url: null, path: 'api/controllers/cohort/export.py' },
+      ],
+    });
+    expect(diffSnapshots(snap(), next, ctx)).toEqual([
+      { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez on cohort/export.py', detail: 'Use the shared helper' },
     ]);
   });
 

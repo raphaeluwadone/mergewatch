@@ -64,7 +64,10 @@ function Timeline({ pr }: { pr: PrDetail }) {
             <time className="mono" dateTime={e.createdAt}>
               {timeAgo(e.createdAt)}
             </time>
-            <span className="text">{e.text}</span>
+            <span className="text">
+              {e.text}
+              {e.detail && <span className="event-detail">{e.detail}</span>}
+            </span>
           </div>
         </div>
       ))}
@@ -195,6 +198,24 @@ export function Detail({ id, mode, onClose }: { id: string; mode: 'panel' | 'pag
             <div className="block-title">Latest review</div>
             <div className="agent-card plain" style={{ display: 'block' }}>
               <strong>{pr.review.reviewer}</strong> requested changes: {pr.review.excerpt}
+            </div>
+          </>
+        )}
+
+        {pr.latestComment && (
+          <>
+            <div className="block-title">Latest comment{pr.latestComment.unread ? ' · new' : ''}</div>
+            <div className="agent-card plain" style={{ display: 'block' }}>
+              <div style={{ fontSize: 12, color: 'var(--text-mute)', marginBottom: 4 }}>
+                <strong style={{ color: 'var(--text)' }}>{pr.latestComment.author}</strong>
+                {pr.latestComment.path && <span className="mono"> on {pr.latestComment.path}</span>} · {timeAgo(pr.latestComment.createdAt)}
+              </div>
+              <div>{pr.latestComment.excerpt}</div>
+              {pr.latestComment.url && (
+                <a href={pr.latestComment.url} target="_blank" rel="noreferrer" style={{ display: 'inline-block', marginTop: 8, fontSize: 12, fontWeight: 700 }}>
+                  Reply on GitHub ↗
+                </a>
+              )}
             </div>
           </>
         )}

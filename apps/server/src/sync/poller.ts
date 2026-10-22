@@ -196,7 +196,7 @@ async function sync(user: User, token: string) {
         }
       }
 
-      for (const e of diff) tx.insert(events).values({ prId, type: e.type, severity: e.severity, text: e.text }).run();
+      for (const e of diff) tx.insert(events).values({ prId, type: e.type, severity: e.severity, text: e.text, detail: e.detail ?? null }).run();
 
       const hasAttention = diff.some((e) => e.severity === 'attention');
       tx.update(prs)

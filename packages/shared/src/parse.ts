@@ -28,3 +28,22 @@ export function extractJiraKeys(...texts: (string | null | undefined)[]): string
   }
   return [...keys];
 }
+
+/** Markdown comment body as a single line of plain text, cut at a word boundary. */
+export function commentExcerpt(markdown: string, max = 160): string {
+  const text = markdown
+    .replace(/<!--[\s\S]*?-->/g, ' ')
+    .replace(/```[\s\S]*?(```|$)/g, ' [code] ')
+    .replace(/`([^`]*)`/g, '$1')
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' [image] ')
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/^\s{0,3}(#{1,6}|>+|[-*+]|\d+\.)\s+/gm, '')
+    .replace(/(\*\*|__|~~)(.*?)\1/g, '$2')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (text.length <= max) return text;
+  const cut = text.slice(0, max - 1);
+  const space = cut.lastIndexOf(' ');
+  return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
+}

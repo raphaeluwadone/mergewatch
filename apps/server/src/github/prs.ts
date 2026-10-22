@@ -10,7 +10,8 @@ fragment PrFields on PullRequest {
   repository { nameWithOwner }
   reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
   reviews(last: 30) { nodes { author { login } state submittedAt body } }
-  comments(last: 20) { totalCount nodes { author { login } createdAt body } }
+  comments(last: 20) { totalCount nodes { author { login } createdAt body url } }
+  reviewThreads(last: 30) { nodes { isResolved path comments(last: 1) { nodes { author { login } createdAt body url } } } }
   commits(last: 1) {
     nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
       __typename
@@ -42,8 +43,16 @@ interface RawPr {
   repository: { nameWithOwner: string };
   reviewRequests: { nodes: { requestedReviewer: { login?: string } | null }[] };
   reviews: { nodes: { author: { login: string } | null; state: string; submittedAt: string | null; body: string }[] };
-  comments: { totalCount: number; nodes: { author: { login: string } | null; createdAt: string; body: string }[] };
+  comments: { totalCount: number; nodes: RawComment[] };
+  reviewThreads: { nodes: { isResolved: boolean; path: string; comments: { nodes: RawComment[] } }[] };
   commits: { nodes: { commit: { statusCheckRollup: { contexts: { nodes: RawContext[] } } | null } }[] };
+}
+
+interface RawComment {
+  author: { login: string } | null;
+  createdAt: string;
+  body: string;
+  url: string;
 }
 
 type RawContext =
@@ -149,7 +158,13 @@ export function normalizePr(pr: RawPr, myLogin: string): PrSnapshot {
       })),
     reviewRequestedFromMe: pr.reviewRequests.nodes.some((n) => n.requestedReviewer?.login?.toLowerCase() === me),
     commentCount: pr.comments.totalCount,
-    latestComments: pr.comments.nodes.map((c) => ({ author: c.author?.login ?? 'ghost', createdAt: c.createdAt, body: c.body })),
+    latestComments: [
+      ...pr.comments.nodes.map((c) => ({ author: c.author?.login ?? 'ghost', createdAt: c.createdAt, body: c.body, url: c.url, path: null })),
+      // The newest comment of each open inline thread: usually the most actionable feedback.
+      ...pr.reviewThreads.nodes
+        .filter((t) => !t.isResolved)
+        .flatMap((t) => t.comments.nodes.map((c) => ({ author: c.author?.login ?? 'ghost', createdAt: c.createdAt, body: c.body, url: c.url, path: t.path }))),
+    ].sort((a, b) => a.createdAt.localeCompare(b.createdAt)),
     checks: normalizeChecks(pr.commits.nodes[0]?.commit.statusCheckRollup?.contexts.nodes ?? []),
     createdAt: pr.createdAt,
     updatedAt: pr.updatedAt,

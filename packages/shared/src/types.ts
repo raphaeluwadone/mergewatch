@@ -27,6 +27,9 @@ export interface Comment {
   author: string;
   createdAt: string;
   body: string;
+  url?: string | null;
+  /** File path, for inline code-review comments. */
+  path?: string | null;
 }
 
 /** Normalized PR state as fetched from GitHub. Stored per poll; the differ compares two of these. */
@@ -97,6 +100,8 @@ export interface PrEvent {
   type: EventType;
   severity: Severity;
   text: string;
+  /** Short plain-text excerpt, e.g. the comment that triggered the event. */
+  detail: string | null;
   createdAt: string;
 }
 
@@ -148,8 +153,19 @@ export interface PrView {
   lastActivityAt: string;
   agent: AgentAnalysis | null;
   review: { reviewer: string; excerpt: string; comments: number } | null;
+  /** Most recent comment or review note from someone else. */
+  latestComment: LatestComment | null;
   detail: string | null;
   muted: boolean;
+}
+
+export interface LatestComment {
+  author: string;
+  excerpt: string;
+  createdAt: string;
+  url: string | null;
+  path: string | null;
+  unread: boolean;
 }
 
 export interface TimelineEvent extends PrEvent {

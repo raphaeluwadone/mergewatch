@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractJiraKeys, parsePrUrl } from './parse.ts';
+import { commentExcerpt, extractJiraKeys, parsePrUrl } from './parse.ts';
 
 describe('parsePrUrl', () => {
   it('parses full and bare PR links', () => {
@@ -24,5 +24,19 @@ describe('extractJiraKeys', () => {
 
   it('ignores text without keys', () => {
     expect(extractJiraKeys('fix/tooltip-overflow', null)).toEqual([]);
+  });
+});
+
+describe('commentExcerpt', () => {
+  it('flattens markdown to one plain line', () => {
+    expect(commentExcerpt('**Nit:** use `useMemo` here.\n\nSee [docs](https://x.dev).')).toBe('Nit: use useMemo here. See docs.');
+    expect(commentExcerpt('> quoted\n- item one\n```ts\nconst a = 1;\n```\ndone')).toBe('quoted item one [code] done');
+    expect(commentExcerpt('<!-- bot marker -->Looks good ![img](a.png)')).toBe('Looks good [image]');
+  });
+
+  it('cuts long text at a word boundary', () => {
+    const out = commentExcerpt('word '.repeat(60), 40);
+    expect(out.length).toBeLessThanOrEqual(40);
+    expect(out.endsWith('word…')).toBe(true);
   });
 });

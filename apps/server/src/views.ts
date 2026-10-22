@@ -1,5 +1,6 @@
 import { and, desc, eq, gt, inArray, ne, sql } from 'drizzle-orm';
 import {
+  commentExcerpt,
   extractJiraKeys,
   type AgentAnalysis,
   type AgentCategory,
@@ -16,7 +17,7 @@ import {
 import { db } from './db/client.ts';
 import { analyses, events, prSources, prs, tickets } from './db/schema.ts';
 import type { User } from './auth/session.ts';
-import { isStale, latestChangeRequest } from './sync/differ.ts';
+import { isStale, latestChangeRequest, latestCommentFromOthers } from './sync/differ.ts';
 import { deriveRole, deriveStatus, sectionFor, summarizeChecks } from './sync/status.ts';
 
 type PrRow = typeof prs.$inferSelect;
@@ -87,6 +88,8 @@ interface Context {
   unread: Map<number, number>;
   analysisByPr: Map<number, (typeof analyses.$inferSelect)[]>;
   ticketByKey: Map<string, TicketRow>;
+  /** When the user last marked each PR seen: the time of the newest event they had seen. */
+  seenAt: Map<number, string>;
 }
 
 function loadContext(user: User, rows: PrRow[]): Context {
@@ -114,7 +117,14 @@ function loadContext(user: User, rows: PrRow[]): Context {
     }
   }
   const ticketByKey = new Map(db.select().from(tickets).where(eq(tickets.userId, user.id)).all().map((t) => [t.key, t]));
-  return { sources, unread, analysisByPr, ticketByKey };
+  const seenIds = rows.map((r) => r.lastSeenEventId).filter((id) => id > 0);
+  const seenAt = new Map<number, string>();
+  if (seenIds.length) {
+    for (const e of db.select({ prId: events.prId, createdAt: events.createdAt }).from(events).where(inArray(events.id, seenIds)).all()) {
+      seenAt.set(e.prId, e.createdAt);
+    }
+  }
+  return { sources, unread, analysisByPr, ticketByKey, seenAt };
 }
 
 function buildView(user: User, row: PrRow, ctx: Context): PrView {
@@ -134,6 +144,19 @@ function buildView(user: User, row: PrRow, ctx: Context): PrView {
   }
 
   const cr = status === 'changes' ? latestChangeRequest(snap) : null;
+  const comment = latestCommentFromOthers(snap, user.login);
+  const seenAt = ctx.seenAt.get(row.id);
+  const latestComment = comment
+    ? {
+        author: comment.author,
+        excerpt: commentExcerpt(comment.body),
+        createdAt: comment.createdAt,
+        url: comment.url ?? null,
+        path: comment.path ?? null,
+        // Never marked seen: the comment is new whenever the PR has unread events.
+        unread: seenAt ? comment.createdAt > seenAt : (ctx.unread.get(row.id) ?? 0) > 0,
+      }
+    : null;
   return {
     id: String(row.id),
     repo: snap.repo,
@@ -153,6 +176,7 @@ function buildView(user: User, row: PrRow, ctx: Context): PrView {
     lastActivityAt: snap.mergedAt ?? snap.updatedAt,
     agent,
     review: cr ? { reviewer: cr.reviewer, excerpt: excerpt(cr.body || 'Requested changes.'), comments: snap.commentCount } : null,
+    latestComment,
     detail: detailLine(snap, status, role, user.staleDays, jira),
     muted: row.muted,
   };
@@ -195,6 +219,7 @@ export function detailView(user: User, prId: number): PrDetail | null {
       type: e.type as PrDetail['timeline'][number]['type'],
       severity: e.severity,
       text: e.text,
+      detail: e.detail,
       createdAt: e.createdAt,
       unread: e.id > row.lastSeenEventId && e.severity !== 'noise',
     }));

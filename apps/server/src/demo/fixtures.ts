@@ -18,7 +18,7 @@ interface Fixture {
   snap: PrSnapshot;
   sources: ('auto' | 'manual' | 'jira')[];
   jiraKey?: string;
-  events: { type: string; severity: 'attention' | 'info' | 'noise'; text: string; hoursAgo: number; unread: boolean }[];
+  events: { type: string; severity: 'attention' | 'info' | 'noise'; text: string; detail?: string; hoursAgo: number; unread: boolean }[];
   analysis?: { status: 'done' | 'analyzing'; category?: string; confidence?: string; text?: string; log?: string[] };
 }
 
@@ -53,12 +53,26 @@ function pr(n: number, repo: string, title: string, over: Partial<PrSnapshot>): 
 export function demoFixtures(): Fixture[] {
   return [
     {
-      snap: pr(1207, 'eai-api', 'Add cohort export endpoint', { headRef: 'feat/ENF-1931-cohort-export', checks: checks(7, 1, 1, NAMES), updatedAt: hoursAgo(0.25) }),
+      snap: pr(1207, 'eai-api', 'Add cohort export endpoint', {
+        headRef: 'feat/ENF-1931-cohort-export',
+        checks: checks(7, 1, 1, NAMES),
+        updatedAt: hoursAgo(0.25),
+        commentCount: 1,
+        latestComments: [
+          {
+            author: 'jalvarez',
+            createdAt: hoursAgo(0.5),
+            body: 'Can we stream this instead of building the whole CSV in memory? Some cohorts are **large** and this will spike the worker.',
+            url: 'https://github.com/EnfluxInc/eai-api/pull/1207#discussion_r1',
+            path: 'api/controllers/cohort/export.py',
+          },
+        ],
+      }),
       sources: ['auto', 'jira'],
       jiraKey: 'ENF-1931',
       events: [
         { type: 'check_failed', severity: 'attention', text: 'Check failed: lint', hoursAgo: 0.25, unread: true },
-        { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez', hoursAgo: 0.5, unread: true },
+        { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez on cohort/export.py', detail: 'Can we stream this instead of building the whole CSV in memory? Some cohorts are large and this will spike the worker.', hoursAgo: 0.5, unread: true },
         { type: 'review_approved', severity: 'info', text: 'Approved by mchen', hoursAgo: 1, unread: true },
         { type: 'new_commit', severity: 'noise', text: 'New commit pushed', hoursAgo: 1.2, unread: false },
         { type: 'first_seen', severity: 'info', text: 'Now tracking this PR', hoursAgo: 48, unread: false },
@@ -77,10 +91,14 @@ export function demoFixtures(): Fixture[] {
         reviewDecision: 'changes_requested',
         commentCount: 2,
         reviews: [{ reviewer: 'jalvarez', state: 'changes_requested', submittedAt: hoursAgo(0.6), body: 'Move the filter state into the URL so it survives a refresh.' }],
+        latestComments: [{ author: 'jalvarez', createdAt: hoursAgo(0.55), body: 'Also, the empty state needs copy for cohorts with no data.', url: null, path: null }],
         updatedAt: hoursAgo(0.6),
       }),
       sources: ['auto'],
-      events: [{ type: 'changes_requested', severity: 'attention', text: 'jalvarez requested changes', hoursAgo: 0.6, unread: true }, { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez', hoursAgo: 0.6, unread: true }],
+      events: [
+        { type: 'changes_requested', severity: 'attention', text: 'jalvarez requested changes', detail: 'Move the filter state into the URL so it survives a refresh.', hoursAgo: 0.6, unread: true },
+        { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez', detail: 'Also, the empty state needs copy for cohorts with no data.', hoursAgo: 0.6, unread: true },
+      ],
     },
     {
       snap: pr(318, 'master-migrator', 'Add index on enrollment term', { headRef: 'feat/enrollment-term-index', mergeState: 'conflict', checks: checks(5, 0, 0, NAMES.slice(0, 5)), updatedAt: hoursAgo(2) }),
@@ -121,10 +139,19 @@ export function demoFixtures(): Fixture[] {
       events: [{ type: 'check_started', severity: 'noise', text: '6 checks started', hoursAgo: 0.07, unread: false }],
     },
     {
-      snap: pr(490, 'platform-ui', 'Add term selector to dashboard header', { author: 'dkim', headRef: 'feat/ENF-1987-term-selector', updatedAt: hoursAgo(26) }),
+      snap: pr(490, 'platform-ui', 'Add term selector to dashboard header', {
+        author: 'dkim',
+        headRef: 'feat/ENF-1987-term-selector',
+        updatedAt: hoursAgo(26),
+        commentCount: 1,
+        latestComments: [{ author: 'dkim', createdAt: hoursAgo(26), body: 'Handing this over since ENF-1987 moved to you. Only the dropdown styling is left.', url: null, path: null }],
+      }),
       sources: ['jira'],
       jiraKey: 'ENF-1987',
-      events: [{ type: 'ticket_assigned', severity: 'info', text: 'ENF-1987 assigned to you', hoursAgo: 26, unread: true }],
+      events: [
+        { type: 'ticket_assigned', severity: 'info', text: 'ENF-1987 assigned to you', hoursAgo: 26.1, unread: true },
+        { type: 'new_comment', severity: 'info', text: 'New comment from dkim', detail: 'Handing this over since ENF-1987 moved to you. Only the dropdown styling is left.', hoursAgo: 26, unread: true },
+      ],
     },
     {
       snap: pr(1210, 'eai-api', 'Paginate institutions list', { author: 'mchen', headRef: 'feat/paginate-institutions', checks: checks(5, 0, 1, NAMES.slice(0, 6)), updatedAt: hoursAgo(2) }),
