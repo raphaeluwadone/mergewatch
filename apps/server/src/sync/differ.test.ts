@@ -88,14 +88,22 @@ describe('diffSnapshots', () => {
     expect(types(snap(), next)).toEqual(['changes_requested:attention']);
   });
 
-  it('reports new comments from others only', () => {
+  it('reports comments from others as news and my own as timeline noise', () => {
     const next = snap({
       latestComments: [
         { author: 'jalvarez', createdAt: '2026-10-20T11:40:00Z', body: 'hi' },
         { author: 'me', createdAt: '2026-10-20T11:41:00Z', body: 'hey' },
       ],
     });
-    expect(diffSnapshots(snap(), next, ctx)).toEqual([{ type: 'new_comment', severity: 'info', text: 'New comment from jalvarez' }]);
+    expect(diffSnapshots(snap(), next, ctx)).toEqual([
+      { type: 'new_comment', severity: 'info', text: 'New comment from jalvarez' },
+      { type: 'new_comment', severity: 'noise', text: 'You commented' },
+    ]);
+  });
+
+  it('records my own comment alone without making it unread', () => {
+    const next = snap({ latestComments: [{ author: 'me', createdAt: '2026-10-20T11:41:00Z', body: 'hey' }] });
+    expect(types(snap(), next)).toEqual(['new_comment:noise']);
   });
 
   it('tracks conflicts appearing and resolving', () => {

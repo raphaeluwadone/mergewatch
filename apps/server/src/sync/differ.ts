@@ -92,9 +92,12 @@ export function diffSnapshots(prev: PrSnapshot | null, next: PrSnapshot, ctx: Di
   }
 
   const seenComments = new Set(prev.latestComments.map((c) => `${c.author}@${c.createdAt}`));
-  const freshComments = next.latestComments.filter((c) => !seenComments.has(`${c.author}@${c.createdAt}`) && !same(c.author, ctx.myLogin));
+  const unseen = next.latestComments.filter((c) => !seenComments.has(`${c.author}@${c.createdAt}`));
+  const freshComments = unseen.filter((c) => !same(c.author, ctx.myLogin));
   if (freshComments.length === 1) add('new_comment', 'info', `New comment from ${freshComments[0]!.author}`);
   else if (freshComments.length > 1) add('new_comment', 'info', `${freshComments.length} new comments`);
+  // Your own comments belong in the timeline but aren't news, so they never count as unread.
+  if (unseen.length > freshComments.length) add('new_comment', 'noise', 'You commented');
 
   if (prev.mergeState !== 'conflict' && next.mergeState === 'conflict') {
     add('merge_conflict', 'attention', `Merge conflict with ${next.baseRef}`);

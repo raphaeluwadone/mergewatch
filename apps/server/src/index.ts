@@ -7,7 +7,8 @@ import { pruneExpiredSessions } from './auth/session.ts';
 
 runMigrations();
 pruneExpiredSessions();
-if (!env.demoMode) startPoller();
+// Syncs only users with a GitHub token, so the demo user is never polled.
+startPoller();
 
 // Bound to loopback: the Vite dev server proxies to it, and nothing else should reach it.
 serve({ fetch: app.fetch, port: env.port, hostname: '127.0.0.1' }, (info) => {
