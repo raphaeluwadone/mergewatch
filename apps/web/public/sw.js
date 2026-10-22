@@ -15,6 +15,7 @@ self.addEventListener('push', (event) => {
       body: data.body,
       tag: data.tag,
       renotify: true,
+      silent: !!data.silent,
       data: { url: data.url },
     }),
   );

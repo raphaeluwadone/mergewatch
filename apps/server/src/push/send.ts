@@ -6,6 +6,7 @@ import { appSecrets, pushSubscriptions } from '../db/schema.ts';
 import { decrypt, encrypt } from '../crypto.ts';
 import type { User } from '../auth/session.ts';
 import { buildPushMessages, type NotifyItem, type PushMessage } from './messages.ts';
+import { playSound, userSoundPath } from './sound.ts';
 
 const VAPID_KEY = 'vapid';
 
@@ -47,10 +48,16 @@ export function removeSubscription(userId: number, endpoint: string) {
   if (row?.userId === userId) db.delete(pushSubscriptions).where(eq(pushSubscriptions.id, row.id)).run();
 }
 
-async function deliver(userId: number, messages: PushMessage[]) {
-  const subs = db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, userId)).all();
+async function deliver(user: User, messages: PushMessage[]) {
+  const subs = db.select().from(pushSubscriptions).where(eq(pushSubscriptions.userId, user.id)).all();
   if (!subs.length || !messages.length) return;
   configure();
+  // One sound per delivery, however many PRs it covers.
+  const sound = userSoundPath(user);
+  if (sound) {
+    messages = messages.map((m) => ({ ...m, silent: true }));
+    playSound(sound);
+  }
   for (const sub of subs) {
     const target = { endpoint: sub.endpoint, keys: JSON.parse(decrypt(sub.keysEnc)) as SubscriptionInput['keys'] };
     for (const msg of messages) {
@@ -72,11 +79,11 @@ async function deliver(userId: number, messages: PushMessage[]) {
 export async function notifyUser(user: User, items: NotifyItem[]) {
   if (!items.length || !user.desktopNotifications) return;
   if (inQuietHours(user.quietHoursStart, user.quietHoursEnd)) return;
-  await deliver(user.id, buildPushMessages(items));
+  await deliver(user, buildPushMessages(items));
 }
 
-export async function sendTestPush(userId: number) {
-  await deliver(userId, [{ title: 'Mergewatch', body: 'Push notifications are on for this browser.', url: '/', tag: 'mw-test' }]);
+export async function sendTestPush(user: User) {
+  await deliver(user, [{ title: 'Mergewatch', body: 'Push notifications are on for this browser.', url: '/', tag: 'mw-test' }]);
 }
 
 export const hasSubscriptions = (userId: number) =>

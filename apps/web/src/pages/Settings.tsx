@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { Me } from '@mergewatch/shared';
 import { api, post, put } from '../lib/api.ts';
@@ -262,6 +262,7 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
               ) : null}
             </div>
           </div>
+          <NotificationSound settings={settings} onSave={save} />
           <div className="panel-row">
             <div>
               <div className="name">Slack notifications</div>
@@ -361,5 +362,94 @@ function QuietHours({ settings, onSave }: { settings: SettingsResponse | undefin
         Save
       </button>
     </form>
+  );
+}
+
+function NotificationSound({ settings, onSave }: { settings: SettingsResponse | undefined; onSave: (p: Partial<SettingsResponse>, m?: string) => void }) {
+  const qc = useQueryClient();
+  const { data: sounds } = useQuery({ queryKey: ['sounds'], queryFn: () => api<{ supported: boolean; system: string[] }>('/api/sounds') });
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  if (!sounds?.supported || !settings) return null;
+
+  const current = settings.notificationSound;
+  const preview = (sound: string) => void post('/api/sound/preview', { sound });
+
+  const upload = async (file: File) => {
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('That file is over 2 MB. Pick a shorter sound.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const res = await fetch('/api/sound', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'x-mergewatch': '1', 'content-type': 'application/octet-stream', 'x-file-name': file.name },
+        body: file,
+      });
+      if (!res.ok) {
+        const err = ((await res.json().catch(() => ({}))) as { error?: string }).error;
+        showToast(err === 'not_audio' ? 'That file isn’t a sound Mergewatch can play (mp3, m4a, wav, aiff or caf).' : 'Upload failed. Try again.');
+        return;
+      }
+      await qc.invalidateQueries({ queryKey: ['settings'] });
+      showToast('Custom sound saved');
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="panel-row">
+      <div>
+        <div className="name">Notification sound</div>
+        <div className="sub">Played by Mergewatch on this Mac, once per batch of notifications. Browsers can’t play custom sounds themselves.</div>
+      </div>
+      <div className="field" style={{ flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <select
+          className="select"
+          aria-label="Notification sound"
+          value={current}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (v === 'upload') {
+              fileRef.current?.click();
+              return;
+            }
+            onSave({ notificationSound: v }, 'Notification sound saved');
+            if (v !== 'default') preview(v);
+          }}
+        >
+          <option value="default">Browser default</option>
+          <optgroup label="macOS sounds">
+            {sounds.system.map((name) => (
+              <option key={name} value={`system:${name}`}>
+                {name}
+              </option>
+            ))}
+          </optgroup>
+          <optgroup label="Your sound">
+            {settings.customSoundName && <option value="custom">{settings.customSoundName}</option>}
+            <option value="upload">{settings.customSoundName ? 'Upload a different file…' : 'Upload a file…'}</option>
+          </optgroup>
+        </select>
+        <button className="btn btn-outline" disabled={current === 'default'} onClick={() => preview(current)}>
+          Preview
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".mp3,.m4a,.wav,.aiff,.aif,.caf,audio/*"
+          hidden
+          disabled={uploading}
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) void upload(file);
+          }}
+        />
+      </div>
+    </div>
   );
 }

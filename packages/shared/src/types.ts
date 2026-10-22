@@ -218,6 +218,9 @@ export interface Settings {
   autoAttributeJira: boolean;
   desktopNotifications: boolean;
   slackNotifications: boolean;
+  /** 'default', 'system:<Name>' or 'custom'. */
+  notificationSound: string;
+  customSoundName: string | null;
 }
 
 export type AddPrPreview =

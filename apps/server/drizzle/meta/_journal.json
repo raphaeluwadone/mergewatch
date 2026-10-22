@@ -22,6 +22,13 @@
       "when": 1792669579057,
       "tag": "0002_web_push",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1792692614887,
+      "tag": "0003_notification_sound",
+      "breakpoints": true
     }
   ]
 }

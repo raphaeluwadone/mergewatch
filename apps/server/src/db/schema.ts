@@ -30,6 +30,11 @@ export const users = sqliteTable('users', {
   autoAttributeJira: integer('auto_attribute_jira', { mode: 'boolean' }).notNull().default(true),
   desktopNotifications: integer('desktop_notifications', { mode: 'boolean' }).notNull().default(true),
   slackNotifications: integer('slack_notifications', { mode: 'boolean' }).notNull().default(false),
+  /** 'default' (browser sound), 'system:<Name>' (a macOS sound) or 'custom' (the uploaded file). */
+  notificationSound: text('notification_sound').notNull().default('default'),
+  /** File name under data/sounds/, set when a custom sound is uploaded. */
+  customSoundFile: text('custom_sound_file'),
+  customSoundName: text('custom_sound_name'),
   createdAt: text('created_at').notNull().default(now),
 });
 

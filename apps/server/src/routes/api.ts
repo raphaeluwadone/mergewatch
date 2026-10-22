@@ -15,6 +15,8 @@ import { isSyncing, requestSync } from '../sync/poller.ts';
 import { subscribe } from '../sync/stream.ts';
 import { detailView, listViews } from '../views.ts';
 import { hasSubscriptions, removeSubscription, saveSubscription, sendTestPush, vapidPublicKey } from '../push/send.ts';
+import { MAX_SOUND_BYTES, playSound, saveCustomSound, soundPath, soundSupported, systemSounds } from '../push/sound.ts';
+import { bodyLimit } from 'hono/body-limit';
 
 export const api = new Hono<AppEnv>();
 api.use('*', requireUser);
@@ -234,6 +236,8 @@ function settingsOf(u: User): Settings & { jiraSite: string | null; githubLogin:
     autoAttributeJira: u.autoAttributeJira,
     desktopNotifications: u.desktopNotifications,
     slackNotifications: u.slackNotifications,
+    notificationSound: u.notificationSound,
+    customSoundName: u.customSoundName,
     jiraSite: u.jiraSiteUrl ? new URL(u.jiraSiteUrl).host : null,
     githubLogin: u.login,
   };
@@ -268,6 +272,15 @@ api.put('/settings', async (c) => {
     if (b[key] === undefined) continue;
     if (typeof b[key] !== 'boolean') return c.json({ error: `invalid_${key}` }, 400);
     patch[key] = b[key] as boolean;
+  }
+  if (b.notificationSound !== undefined) {
+    const v = b.notificationSound;
+    const ok =
+      v === 'default' ||
+      (typeof v === 'string' && v.startsWith('system:') && systemSounds().includes(v.slice('system:'.length))) ||
+      (v === 'custom' && !!user.customSoundFile);
+    if (!ok) return c.json({ error: 'invalid_notification_sound' }, 400);
+    patch.notificationSound = v as string;
   }
   if (Object.keys(patch).length) db.update(users).set(patch).where(eq(users.id, user.id)).run();
   const updated = db.select().from(users).where(eq(users.id, user.id)).get()!;
@@ -322,7 +335,37 @@ api.post('/push/unsubscribe', async (c) => {
 });
 
 api.post('/push/test', async (c) => {
-  await sendTestPush(c.get('user').id);
+  await sendTestPush(c.get('user'));
+  return c.json({ ok: true });
+});
+
+api.get('/sounds', (c) => c.json({ supported: soundSupported(), system: systemSounds() }));
+
+api.post(
+  '/sound',
+  bodyLimit({ maxSize: MAX_SOUND_BYTES, onError: (c) => c.json({ error: 'too_large' }, 413) }),
+  async (c) => {
+    if (!soundSupported()) return c.json({ error: 'unsupported' }, 400);
+    const user = c.get('user');
+    const data = new Uint8Array(await c.req.arrayBuffer());
+    let file: string;
+    try {
+      file = saveCustomSound(user.id, data);
+    } catch {
+      return c.json({ error: 'not_audio' }, 400);
+    }
+    const name = (c.req.header('x-file-name') ?? 'Custom sound').replace(/[^\w .()-]/g, '').slice(0, 80) || 'Custom sound';
+    db.update(users).set({ customSoundFile: file, customSoundName: name, notificationSound: 'custom' }).where(eq(users.id, user.id)).run();
+    playSound(soundPath('custom', file));
+    return c.json({ ok: true, name });
+  },
+);
+
+api.post('/sound/preview', async (c) => {
+  const user = c.get('user');
+  const { sound } = await body(c);
+  if (typeof sound !== 'string') return c.json({ error: 'invalid' }, 400);
+  playSound(soundPath(sound, user.customSoundFile));
   return c.json({ ok: true });
 });
 

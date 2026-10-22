@@ -17,6 +17,8 @@ export interface PushMessage {
   url: string;
   /** Same tag replaces an earlier notification for the PR instead of stacking. */
   tag: string;
+  /** Set when the server plays its own sound, so the browser doesn't play a second one. */
+  silent?: boolean;
 }
 
 const NOTIFY_INFO: EventType[] = ['new_comment', 'review_approved', 'merged', 'ticket_assigned'];
