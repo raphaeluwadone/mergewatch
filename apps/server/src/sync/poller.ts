@@ -12,6 +12,8 @@ import { analyzeFailures } from '../agent/analyze.ts';
 import { diffSnapshots, type DiffEvent } from './differ.ts';
 import { deriveRole } from './status.ts';
 import { publish } from './stream.ts';
+import { shouldNotify, type NotifyItem } from '../push/messages.ts';
+import { notifyUser } from '../push/send.ts';
 
 const inFlight = new Set<number>();
 const queued = new Set<number>();
@@ -146,6 +148,7 @@ async function sync(user: User, token: string) {
   if (assigned) await lookupLinkedTickets(user, [...snapshots.values()], ticketStatus);
 
   const attention: StreamMessage['attention'] = [];
+  const notify: NotifyItem[] = [];
 
   db.transaction((tx) => {
     for (const snap of snapshots.values()) {
@@ -223,6 +226,15 @@ async function sync(user: User, token: string) {
         queueMicrotask(() => analyzeFailures(user, prId, snap, checks, () => publish(user.id, { type: 'sync', attention: [] })));
       }
 
+      if (user.initialSyncDone) {
+        const muted = !!row?.muted && !hasAttention;
+        for (const e of diff) {
+          if (shouldNotify(e, muted)) {
+            notify.push({ prId, repo: snap.repo, number: snap.number, title: snap.title, type: e.type, severity: e.severity, text: e.text, detail: e.detail ?? null });
+          }
+        }
+      }
+
       if (hasAttention && user.initialSyncDone) {
         for (const e of diff.filter((d) => d.severity === 'attention')) {
           attention.push({ prId: String(prId), repo: snap.repo, number: snap.number, text: e.text });
@@ -261,6 +273,7 @@ async function sync(user: User, token: string) {
   });
 
   publish(user.id, { type: 'sync', attention });
+  void notifyUser(user, notify).catch((err) => console.error('Push failed:', err));
 }
 
 /** Status for tickets mentioned by tracked PRs that aren't assigned to the user. */

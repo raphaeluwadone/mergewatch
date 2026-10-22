@@ -47,3 +47,13 @@ export function commentExcerpt(markdown: string, max = 160): string {
   const space = cut.lastIndexOf(' ');
   return `${(space > max * 0.6 ? cut.slice(0, space) : cut).trimEnd()}…`;
 }
+
+/** True when `now` (local time) falls inside quiet hours given as HH:MM; ranges may wrap past midnight. */
+export function inQuietHours(start: string | null, end: string | null, now = new Date()): boolean {
+  if (!start || !end) return false;
+  const mins = now.getHours() * 60 + now.getMinutes();
+  const toMins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
+  const a = toMins(start);
+  const b = toMins(end);
+  return a <= b ? mins >= a && mins < b : mins >= a || mins < b;
+}

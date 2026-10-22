@@ -8,6 +8,7 @@ import { navigate, useLocation } from '../lib/router.ts';
 import { setPrefs, usePrefs } from '../lib/prefs.ts';
 import { Header } from '../components/Shell.tsx';
 import { RepoPicker, type RepoOption } from '../components/RepoPicker.tsx';
+import { disablePush, enablePush, getPushState, type PushState } from '../lib/push.ts';
 
 function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
   return <button type="button" role="switch" className="toggle" aria-checked={checked} aria-label={label} disabled={disabled} onClick={() => onChange(!checked)} />;
@@ -23,13 +24,25 @@ function Status({ ok, children }: { ok: boolean | null; children: ReactNode }) {
   );
 }
 
-function useNotificationPermission() {
-  const [perm, setPerm] = useState(typeof Notification === 'undefined' ? 'unsupported' : Notification.permission);
-  const request = async () => {
-    if (typeof Notification === 'undefined') return;
-    setPerm(await Notification.requestPermission());
+function usePushState() {
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    void getPushState().then(setState);
+  }, []);
+  const run = async (fn: () => Promise<PushState>, message: string) => {
+    setBusy(true);
+    try {
+      const next = await fn();
+      setState(next);
+      showToast(next === 'denied' ? 'Notifications are blocked for this site in your browser' : message);
+    } catch {
+      showToast('Could not change push notifications. Try again.');
+    } finally {
+      setBusy(false);
+    }
   };
-  return [perm, request] as const;
+  return { state, busy, enable: () => run(enablePush, 'Push notifications on for this browser'), disable: () => run(disablePush, 'Push notifications off for this browser') };
 }
 
 export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
@@ -42,7 +55,7 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
   const { data: repos } = useQuery({ queryKey: ['repos'], queryFn: () => api<RepoOption[]>('/api/repos') });
   const [picked, setPicked] = useState<Set<string> | null>(null);
   const [projects, setProjects] = useState('');
-  const [perm, requestPerm] = useNotificationPermission();
+  const push = usePushState();
 
   useEffect(() => {
     if (repos && !picked) setPicked(new Set(repos.filter((r) => r.tracked).map((r) => r.fullName)));
@@ -211,20 +224,42 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
         <div className="panel">
           <div className="panel-row">
             <div>
-              <div className="name">Desktop notifications</div>
+              <div className="name">Push notifications</div>
               <div className="sub">
-                For things that need you, batched per PR.{' '}
-                {perm === 'denied' && 'Blocked in this browser. Allow notifications for this site in your browser settings.'}
-                {perm === 'unsupported' && 'Not supported in this browser.'}
+                Arrive even when no Mergewatch tab is open. Sent for anything that needs you, comments from others, approvals, merges and Jira
+                assignments, one per PR. Clicking one opens the PR.
               </div>
             </div>
+            <Toggle label="Push notifications" checked={settings?.desktopNotifications ?? true} onChange={(v) => save({ desktopNotifications: v })} />
+          </div>
+          <div className="panel-row">
+            <div>
+              <div className="name">This browser</div>
+              <Status ok={push.state === 'on' ? true : push.state === 'denied' ? false : null}>
+                {push.state === 'on'
+                  ? 'Receiving push notifications'
+                  : push.state === 'denied'
+                    ? 'Blocked. Allow notifications for this site in your browser settings.'
+                    : push.state === 'unsupported'
+                      ? 'This browser does not support push notifications.'
+                      : 'Not set up on this browser'}
+              </Status>
+            </div>
             <div className="field">
-              {perm === 'default' && (
-                <button className="btn btn-outline" onClick={requestPerm}>
-                  Allow in browser
+              {push.state === 'on' && (
+                <button className="btn btn-outline" disabled={push.busy} onClick={() => post('/api/push/test').then(() => showToast('Test notification sent'))}>
+                  Send a test
                 </button>
               )}
-              <Toggle label="Desktop notifications" checked={settings?.desktopNotifications ?? true} onChange={(v) => save({ desktopNotifications: v })} />
+              {push.state === 'on' ? (
+                <button className="btn btn-outline" disabled={push.busy} onClick={push.disable}>
+                  Turn off here
+                </button>
+              ) : push.state === 'off' ? (
+                <button className="btn btn-primary" disabled={push.busy} onClick={push.enable}>
+                  Enable on this browser
+                </button>
+              ) : null}
             </div>
           </div>
           <div className="panel-row">

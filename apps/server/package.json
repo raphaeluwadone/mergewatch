@@ -20,10 +20,12 @@
     "@mergewatch/shared": "workspace:*",
     "better-sqlite3": "^13.0.3",
     "drizzle-orm": "^0.45.4",
-    "hono": "^4.13.13"
+    "hono": "^4.13.13",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^9.6.0",
+    "@types/web-push": "^3.6.4",
     "drizzle-kit": "^0.31.11",
     "tsx": "^4.23.15"
   }

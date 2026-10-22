@@ -14,6 +14,7 @@ import { DEMO_REPOS, demoLookup } from '../demo/fixtures.ts';
 import { isSyncing, requestSync } from '../sync/poller.ts';
 import { subscribe } from '../sync/stream.ts';
 import { detailView, listViews } from '../views.ts';
+import { hasSubscriptions, removeSubscription, saveSubscription, sendTestPush, vapidPublicKey } from '../push/send.ts';
 
 export const api = new Hono<AppEnv>();
 api.use('*', requireUser);
@@ -291,6 +292,37 @@ api.post('/jira/disconnect', (c) => {
     .map((r) => r.prId);
   if (jiraOnly.length) db.delete(prSources).where(and(inArray(prSources.prId, jiraOnly), eq(prSources.source, 'jira'))).run();
   requestSync(userId);
+  return c.json({ ok: true });
+});
+
+api.get('/push', (c) => c.json({ publicKey: vapidPublicKey(), subscriptions: hasSubscriptions(c.get('user').id) }));
+
+const B64URL = /^[A-Za-z0-9_-]+={0,2}$/;
+
+api.post('/push/subscribe', async (c) => {
+  const { endpoint, keys } = await body(c);
+  const k = keys as { p256dh?: unknown; auth?: unknown } | undefined;
+  let url: URL | null = null;
+  try {
+    url = typeof endpoint === 'string' && endpoint.length < 1000 ? new URL(endpoint) : null;
+  } catch {
+    url = null;
+  }
+  if (!url || url.protocol !== 'https:' || typeof k?.p256dh !== 'string' || typeof k?.auth !== 'string' || !B64URL.test(k.p256dh) || !B64URL.test(k.auth)) {
+    return c.json({ error: 'invalid_subscription' }, 400);
+  }
+  saveSubscription(c.get('user').id, { endpoint: url.toString(), keys: { p256dh: k.p256dh, auth: k.auth } });
+  return c.json({ ok: true });
+});
+
+api.post('/push/unsubscribe', async (c) => {
+  const { endpoint } = await body(c);
+  if (typeof endpoint === 'string') removeSubscription(c.get('user').id, endpoint);
+  return c.json({ ok: true });
+});
+
+api.post('/push/test', async (c) => {
+  await sendTestPush(c.get('user').id);
   return c.json({ ok: true });
 });
 

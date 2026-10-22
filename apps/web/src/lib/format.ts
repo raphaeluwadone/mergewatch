@@ -36,12 +36,3 @@ export function sourceLabels(pr: Pick<PrView, 'sources' | 'jira'>): string[] {
 }
 
 export const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
-
-export function inQuietHours(start: string | null, end: string | null, now = new Date()): boolean {
-  if (!start || !end) return false;
-  const mins = now.getHours() * 60 + now.getMinutes();
-  const toMins = (t: string) => Number(t.slice(0, 2)) * 60 + Number(t.slice(3, 5));
-  const a = toMins(start);
-  const b = toMins(end);
-  return a <= b ? mins >= a && mins < b : mins >= a || mins < b;
-}

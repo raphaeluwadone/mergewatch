@@ -128,6 +128,25 @@ export const analyses = sqliteTable(
   (t) => [primaryKey({ columns: [t.prId, t.headSha, t.checkName] })],
 );
 
+/** Server-generated secrets, encrypted with ENCRYPTION_KEY (e.g. the web push signing key). */
+export const appSecrets = sqliteTable('app_secrets', {
+  key: text('key').primaryKey(),
+  valueEnc: text('value_enc').notNull(),
+});
+
+/** One row per browser that enabled push. The subscription keys are encrypted. */
+export const pushSubscriptions = sqliteTable(
+  'push_subscriptions',
+  {
+    id: integer('id').primaryKey({ autoIncrement: true }),
+    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    endpoint: text('endpoint').notNull().unique(),
+    keysEnc: text('keys_enc').notNull(),
+    createdAt: text('created_at').notNull().default(now),
+  },
+  (t) => [index('push_user').on(t.userId)],
+);
+
 /** Short-lived OAuth `state` values, to stop login CSRF. */
 export const oauthStates = sqliteTable('oauth_states', {
   state: text('state').primaryKey(),

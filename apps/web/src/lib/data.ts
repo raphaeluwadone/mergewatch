@@ -1,8 +1,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import type { DashboardResponse, Me, PrDetail, Settings, StreamMessage } from '@mergewatch/shared';
+import type { DashboardResponse, Me, PrDetail, Settings } from '@mergewatch/shared';
 import { api, ApiError } from './api.ts';
-import { inQuietHours } from './format.ts';
 
 export interface AppConfig {
   demo: boolean;
@@ -52,40 +51,18 @@ export function useRefresh() {
   };
 }
 
-/** Live updates: refetch on every server sync and raise desktop notifications for attention events. */
+/** Live updates: refetch on every server sync. Notifications arrive separately as web push. */
 export function useLiveStream(enabled: boolean) {
   const qc = useQueryClient();
   useEffect(() => {
     if (!enabled) return;
     const source = new EventSource('/api/stream');
-    source.addEventListener('sync', (e) => {
+    source.addEventListener('sync', () => {
       void qc.invalidateQueries({ queryKey: ['dashboard'] });
       void qc.invalidateQueries({ queryKey: ['pr'] });
-      const msg = JSON.parse((e as MessageEvent<string>).data) as StreamMessage;
-      notify(msg, qc.getQueryData<SettingsResponse>(['settings']));
     });
     return () => source.close();
   }, [enabled, qc]);
-}
-
-function notify(msg: StreamMessage, settings: SettingsResponse | undefined) {
-  if (!msg.attention.length || !settings?.desktopNotifications) return;
-  if (typeof Notification === 'undefined' || Notification.permission !== 'granted') return;
-  if (inQuietHours(settings.quietHoursStart, settings.quietHoursEnd)) return;
-  // Batched per PR, as the design asks.
-  const byPr = new Map<string, StreamMessage['attention']>();
-  for (const a of msg.attention) byPr.set(a.prId, [...(byPr.get(a.prId) ?? []), a]);
-  for (const [prId, items] of byPr) {
-    const first = items[0]!;
-    const repo = first.repo.split('/').pop();
-    const body = items.length === 1 ? first.text : `${first.text} and ${items.length - 1} more`;
-    const n = new Notification(`${repo} #${first.number} needs you`, { body, tag: `mw-${prId}` });
-    n.onclick = () => {
-      window.focus();
-      window.history.pushState(null, '', `/pr/${prId}`);
-      window.dispatchEvent(new PopStateEvent('popstate'));
-    };
-  }
 }
 
 /* ---------- Toasts ---------- */
