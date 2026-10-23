@@ -202,26 +202,36 @@ const REPO_NAME = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 api.get('/repos', async (c) => {
   const user = c.get('user');
-  const tracked = new Set(db.select({ n: trackedRepos.fullName }).from(trackedRepos).where(eq(trackedRepos.userId, user.id)).all().map((r) => r.n));
+  const rows = db.select({ n: trackedRepos.fullName, watchAll: trackedRepos.watchAll }).from(trackedRepos).where(eq(trackedRepos.userId, user.id)).all();
+  const tracked = new Set(rows.map((r) => r.n));
+  const watchAll = new Set(rows.filter((r) => r.watchAll).map((r) => r.n));
   const available = await availableRepos(user);
   const names = new Set(available.map((r) => r.fullName));
   // Keep tracked repos visible even if GitHub stopped listing them, so they can be removed.
   for (const t of tracked) if (!names.has(t)) available.push({ fullName: t, private: true, pushedAt: null });
-  return c.json(available.map((r) => ({ ...r, tracked: tracked.has(r.fullName) })));
+  return c.json(available.map((r) => ({ ...r, tracked: tracked.has(r.fullName), watchAll: watchAll.has(r.fullName) })));
 });
 
 api.put('/repos', async (c) => {
   const user = c.get('user');
-  const { repos } = await body(c);
+  const { repos, watchAll } = await body(c);
   if (!Array.isArray(repos) || repos.length > 300 || !repos.every((r) => typeof r === 'string' && REPO_NAME.test(r))) {
     return c.json({ error: 'invalid' }, 400);
   }
+  if (watchAll !== undefined && (!Array.isArray(watchAll) || !watchAll.every((r) => typeof r === 'string' && repos.includes(r)))) {
+    return c.json({ error: 'invalid_watch_all' }, 400);
+  }
+  // Omitted means "leave watch-all as it was", so older callers (onboarding) don't reset it.
+  const previousWatch = new Set(
+    db.select({ n: trackedRepos.fullName }).from(trackedRepos).where(and(eq(trackedRepos.userId, user.id), eq(trackedRepos.watchAll, true))).all().map((r) => r.n),
+  );
+  const watchSet = new Set((watchAll as string[] | undefined) ?? [...previousWatch]);
   const allowed = new Set((await availableRepos(user)).map((r) => r.fullName));
   const current = new Set(db.select({ n: trackedRepos.fullName }).from(trackedRepos).where(eq(trackedRepos.userId, user.id)).all().map((r) => r.n));
   const wanted = (repos as string[]).filter((r) => allowed.has(r) || current.has(r));
   db.transaction((tx) => {
     tx.delete(trackedRepos).where(eq(trackedRepos.userId, user.id)).run();
-    for (const fullName of new Set(wanted)) tx.insert(trackedRepos).values({ userId: user.id, fullName }).run();
+    for (const fullName of new Set(wanted)) tx.insert(trackedRepos).values({ userId: user.id, fullName, watchAll: watchSet.has(fullName) }).run();
   });
   requestSync(user.id);
   return c.json({ tracked: wanted.length });

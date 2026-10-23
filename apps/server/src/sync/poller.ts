@@ -68,6 +68,8 @@ export async function syncUser(userId: number) {
 interface Attribution {
   auto: boolean;
   manual: boolean;
+  /** Open in a repo the user watches in full. */
+  repo: boolean;
   jiraKeys: Set<string>;
 }
 
@@ -76,16 +78,16 @@ const iReviewed = (snap: PrSnapshot, login: string) => snap.reviews.some((r) => 
 async function sync(user: User, token: string) {
   const now = new Date();
   const login = user.login;
-  const tracked = new Set(
-    db.select({ name: trackedRepos.fullName }).from(trackedRepos).where(eq(trackedRepos.userId, user.id)).all().map((r) => r.name.toLowerCase()),
-  );
+  const trackedRows = db.select({ name: trackedRepos.fullName, watchAll: trackedRepos.watchAll }).from(trackedRepos).where(eq(trackedRepos.userId, user.id)).all();
+  const tracked = new Set(trackedRows.map((r) => r.name.toLowerCase()));
+  const watched = new Set(trackedRows.filter((r) => r.watchAll).map((r) => r.name.toLowerCase()));
   const isTracked = (repo: string) => tracked.has(repo.toLowerCase());
 
   const snapshots = new Map<string, PrSnapshot>();
   const attribution = new Map<string, Attribution>();
   const attr = (nodeId: string) => {
     let a = attribution.get(nodeId);
-    if (!a) attribution.set(nodeId, (a = { auto: false, manual: false, jiraKeys: new Set() }));
+    if (!a) attribution.set(nodeId, (a = { auto: false, manual: false, repo: false, jiraKeys: new Set() }));
     return a;
   };
 
@@ -119,26 +121,31 @@ async function sync(user: User, token: string) {
     }
   }
   const assignedByKey = new Map((assigned ?? []).map((i) => [i.key, i]));
-  if (assigned && user.autoAttributeJira && assignedByKey.size > 0) {
-    for (const repo of tracked) {
-      for (const head of await listOpenPrHeads(token, repo)) {
-        for (const key of extractJiraKeys(head.headRefName, head.title)) {
-          if (assignedByKey.has(key)) attr(head.id).jiraKeys.add(key);
-        }
+  const matchJira = !!assigned && user.autoAttributeJira && assignedByKey.size > 0;
+  // One listing per repo serves both Jira matching and watched repos.
+  for (const repo of tracked) {
+    if (!matchJira && !watched.has(repo)) continue;
+    for (const head of await listOpenPrHeads(token, repo)) {
+      if (watched.has(repo)) attr(head.id).repo = true;
+      if (!matchJira) continue;
+      for (const key of extractJiraKeys(head.headRefName, head.title)) {
+        if (assignedByKey.has(key)) attr(head.id).jiraKeys.add(key);
       }
     }
   }
 
   // Refresh everything we track that the searches didn't return, so merges and closes are seen.
   const toRefresh = new Set<string>();
-  for (const [nodeId, a] of attribution) if (!snapshots.has(nodeId) && (a.manual || a.jiraKeys.size)) toRefresh.add(nodeId);
+  for (const [nodeId, a] of attribution) if (!snapshots.has(nodeId) && (a.manual || a.repo || a.jiraKeys.size)) toRefresh.add(nodeId);
   for (const row of rows) if (!row.dismissed && !snapshots.has(row.nodeId)) toRefresh.add(row.nodeId);
   for (const snap of await fetchPrsByIds(token, login, [...toRefresh])) {
     snapshots.set(snap.nodeId, snap);
     const row = rowByNode.get(snap.nodeId);
-    const wasAuto = row && (prevSourcesByPr.get(row.id) ?? []).some((s) => s.source === 'auto');
+    const had = (source: string) => !!row && (prevSourcesByPr.get(row.id) ?? []).some((s) => s.source === source);
     // Left the search because it merged/closed, or because the user already reviewed it.
-    if (wasAuto && isTracked(snap.repo) && (snap.state !== 'open' || iReviewed(snap, login))) attr(snap.nodeId).auto = true;
+    if (had('auto') && isTracked(snap.repo) && (snap.state !== 'open' || iReviewed(snap, login))) attr(snap.nodeId).auto = true;
+    // Left the open listing because it merged: keep it long enough to show as merged.
+    if (had('repo') && watched.has(snap.repo.toLowerCase()) && snap.state === 'merged') attr(snap.nodeId).repo = true;
   }
 
   const prevAssignedKeys = new Set(
@@ -152,8 +159,13 @@ async function sync(user: User, token: string) {
 
   db.transaction((tx) => {
     for (const snap of snapshots.values()) {
-      const a = attribution.get(snap.nodeId) ?? { auto: false, manual: false, jiraKeys: new Set<string>() };
-      const sources: Source[] = [...(a.auto ? ['auto' as const] : []), ...(a.manual ? ['manual' as const] : []), ...(a.jiraKeys.size ? ['jira' as const] : [])];
+      const a = attribution.get(snap.nodeId) ?? { auto: false, manual: false, repo: false, jiraKeys: new Set<string>() };
+      const sources: Source[] = [
+        ...(a.auto ? ['auto' as const] : []),
+        ...(a.manual ? ['manual' as const] : []),
+        ...(a.jiraKeys.size ? ['jira' as const] : []),
+        ...(a.repo ? ['repo' as const] : []),
+      ];
       const row = rowByNode.get(snap.nodeId);
       const prevJiraKeys = new Set((row ? (prevSourcesByPr.get(row.id) ?? []) : []).filter((s) => s.source === 'jira').map((s) => s.jiraKey));
 
@@ -216,8 +228,9 @@ async function sync(user: User, token: string) {
         .where(eq(prs.id, prId))
         .run();
 
-      tx.delete(prSources).where(and(eq(prSources.prId, prId), inArray(prSources.source, ['auto', 'jira']))).run();
+      tx.delete(prSources).where(and(eq(prSources.prId, prId), inArray(prSources.source, ['auto', 'jira', 'repo']))).run();
       if (a.auto) tx.insert(prSources).values({ prId, source: 'auto' }).run();
+      if (a.repo) tx.insert(prSources).values({ prId, source: 'repo' }).run();
       for (const key of a.jiraKeys) tx.insert(prSources).values({ prId, source: 'jira', jiraKey: key }).run();
 
       const newlyFailed = diff.filter((e) => e.type === 'check_failed').map((e) => e.text.replace(/^Check failed: /, ''));
@@ -229,7 +242,7 @@ async function sync(user: User, token: string) {
       if (user.initialSyncDone) {
         const muted = !!row?.muted && !hasAttention;
         for (const e of diff) {
-          if (shouldNotify(e, muted)) {
+          if (shouldNotify(e, muted, role === 'observer')) {
             notify.push({ prId, repo: snap.repo, number: snap.number, title: snap.title, type: e.type, severity: e.severity, text: e.text, detail: e.detail ?? null });
           }
         }

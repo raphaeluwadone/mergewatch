@@ -50,6 +50,8 @@ export const trackedRepos = sqliteTable(
   {
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     fullName: text('full_name').notNull(),
+    /** Track every open PR in the repo, not just the user's. */
+    watchAll: integer('watch_all', { mode: 'boolean' }).notNull().default(false),
   },
   (t) => [primaryKey({ columns: [t.userId, t.fullName] })],
 );
@@ -79,7 +81,7 @@ export const prSources = sqliteTable(
   'pr_sources',
   {
     prId: integer('pr_id').notNull().references(() => prs.id, { onDelete: 'cascade' }),
-    source: text('source', { enum: ['auto', 'manual', 'jira'] }).notNull(),
+    source: text('source', { enum: ['auto', 'manual', 'jira', 'repo'] }).notNull(),
     /** For `jira`: the ticket that attributed this PR. Empty string otherwise, to keep the key simple. */
     jiraKey: text('jira_key').notNull().default(''),
   },

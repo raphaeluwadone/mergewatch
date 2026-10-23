@@ -21,20 +21,28 @@ const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export function isStale(snap: PrSnapshot, ctx: Pick<DiffContext, 'now' | 'staleDays' | 'role'>): boolean {
   if (snap.state !== 'open' || snap.isDraft) return false;
-  if (ctx.role === 'reviewer' || ctx.role === 'watching') return false;
+  if (ctx.role === 'reviewer' || ctx.role === 'watching' || ctx.role === 'observer') return false;
   const ageMs = ctx.now.getTime() - new Date(snap.updatedAt).getTime();
   return ageMs >= ctx.staleDays * 24 * 60 * 60 * 1000;
 }
 
 /** Events describing what changed between two snapshots of the same PR. `prev` is null the first time a PR is seen. */
 export function diffSnapshots(prev: PrSnapshot | null, next: PrSnapshot, ctx: DiffContext): DiffEvent[] {
+  const events = rawDiff(prev, next, ctx);
+  if (ctx.role !== 'observer') return events;
+  // Watched-repo PRs belong to someone else: nothing about them needs the user, and showing up isn't news.
+  return events.map((e) => (e.type === 'first_seen' ? { ...e, severity: 'noise' as const } : e.severity === 'attention' ? { ...e, severity: 'info' as const } : e));
+}
+
+function rawDiff(prev: PrSnapshot | null, next: PrSnapshot, ctx: DiffContext): DiffEvent[] {
   const events: DiffEvent[] = [];
   const add = (type: EventType, severity: Severity, text: string, detail?: string) =>
     events.push(detail ? { type, severity, text, detail } : { type, severity, text });
 
   if (!prev) {
-    add('first_seen', 'info', ctx.role === 'reviewer' ? 'Now tracking: review requested from you' : 'Now tracking this PR');
-    if (next.state === 'open') {
+    const why = ctx.role === 'reviewer' ? 'Now tracking: review requested from you' : ctx.role === 'observer' ? `Watching: opened by ${next.author}` : 'Now tracking this PR';
+    add('first_seen', 'info', why);
+    if (next.state === 'open' && ctx.role !== 'observer') {
       for (const c of next.checks) if (c.status === 'failed') add('check_failed', 'attention', `Check failed: ${c.name}`);
       if (next.mergeState === 'conflict') add('merge_conflict', 'attention', `Merge conflict with ${next.baseRef}`);
       if (next.reviewDecision === 'changes_requested' && ctx.role !== 'reviewer') {

@@ -47,3 +47,13 @@ describe('buildPushMessages', () => {
     expect(buildPushMessages([item({})])[0]!.body).toBe('Add cohort export endpoint\nNew comment from jalvarez: Can we stream this?');
   });
 });
+
+describe('shouldNotify for watched-repo PRs', () => {
+  it('only notifies for comments and approvals', () => {
+    expect(shouldNotify({ type: 'new_comment', severity: 'info' }, false, true)).toBe(true);
+    expect(shouldNotify({ type: 'review_approved', severity: 'info' }, false, true)).toBe(true);
+    expect(shouldNotify({ type: 'check_failed', severity: 'info' }, false, true)).toBe(false);
+    expect(shouldNotify({ type: 'merged', severity: 'info' }, false, true)).toBe(false);
+    expect(shouldNotify({ type: 'new_comment', severity: 'info' }, true, true)).toBe(false);
+  });
+});

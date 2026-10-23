@@ -44,7 +44,7 @@ function detailLine(snap: PrSnapshot, status: PrStatus, role: Role, staleDays: n
     case 'merged':
       return `Merged into ${snap.baseRef}.`;
     case 'manual':
-      return 'Added by you from a link.';
+      return role === 'observer' ? `Opened by ${snap.author}. You're watching this repo.` : 'Added by you from a link.';
     case 'waiting':
       if (role === 'ticket_owner') return `Written by ${snap.author}, on your ticket${jira ? ` ${jira.key}` : ''}.`;
       if (role === 'reviewer') return 'You reviewed this. Waiting on the author.';

@@ -54,12 +54,14 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
   const { data: dash } = useDashboard();
   const { data: repos } = useQuery({ queryKey: ['repos'], queryFn: () => api<RepoOption[]>('/api/repos') });
   const [picked, setPicked] = useState<Set<string> | null>(null);
+  const [watchAll, setWatchAll] = useState<Set<string> | null>(null);
   const [projects, setProjects] = useState('');
   const push = usePushState();
 
   useEffect(() => {
     if (repos && !picked) setPicked(new Set(repos.filter((r) => r.tracked).map((r) => r.fullName)));
-  }, [repos, picked]);
+    if (repos && !watchAll) setWatchAll(new Set(repos.filter((r) => r.watchAll).map((r) => r.fullName)));
+  }, [repos, picked, watchAll]);
   useEffect(() => {
     if (settings) setProjects(settings.jiraProjects.join(', '));
   }, [settings]);
@@ -86,7 +88,9 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
   const jira = dash?.connection.jira ?? 'not_connected';
   const jiraConnected = jira === 'connected';
   const trackedNow = new Set(repos?.filter((r) => r.tracked).map((r) => r.fullName));
-  const reposDirty = !!picked && (picked.size !== trackedNow.size || [...picked].some((r) => !trackedNow.has(r)));
+  const watchNow = new Set(repos?.filter((r) => r.watchAll).map((r) => r.fullName));
+  const differs = (a: Set<string> | null, b: Set<string>) => !!a && (a.size !== b.size || [...a].some((r) => !b.has(r)));
+  const reposDirty = differs(picked, trackedNow) || differs(watchAll, watchNow);
 
   return (
     <div className="app">
@@ -160,23 +164,35 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
 
         <h2 id="repos">Tracked repos</h2>
         <div className="panel" style={{ padding: 16 }}>
-          {!repos || !picked ? (
+          {!repos || !picked || !watchAll ? (
             <span className="spinner" />
           ) : (
             <>
-              <RepoPicker repos={repos} picked={picked} onChange={setPicked} />
+              <p className="sub" style={{ margin: '0 0 10px' }}>
+                Mergewatch follows PRs you author or review in these repos. Switch on <strong>Watch all PRs</strong> to also see everyone else’s open PRs
+                there. Those stay in Waiting on others and only notify for comments and approvals.
+              </p>
+              <RepoPicker repos={repos} picked={picked} onChange={setPicked} watchAll={watchAll} onWatchAllChange={setWatchAll} />
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 12 }}>
-                <button className="btn btn-outline" disabled={!reposDirty} onClick={() => setPicked(trackedNow)}>
+                <button
+                  className="btn btn-outline"
+                  disabled={!reposDirty}
+                  onClick={() => {
+                    setPicked(trackedNow);
+                    setWatchAll(watchNow);
+                  }}
+                >
                   Reset
                 </button>
                 <button
                   className="btn btn-primary"
                   disabled={!reposDirty}
                   onClick={async () => {
-                    const { tracked } = await put<{ tracked: number }>('/api/repos', { repos: [...picked] });
+                    const { tracked } = await put<{ tracked: number }>('/api/repos', { repos: [...picked], watchAll: [...watchAll].filter((r) => picked.has(r)) });
                     await qc.invalidateQueries({ queryKey: ['repos'] });
                     void qc.invalidateQueries({ queryKey: ['dashboard'] });
                     setPicked(null);
+                    setWatchAll(null);
                     showToast(`Tracking ${tracked} ${tracked === 1 ? 'repo' : 'repos'}`);
                   }}
                 >

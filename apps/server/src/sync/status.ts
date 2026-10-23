@@ -16,12 +16,15 @@ export function deriveRole(snap: PrSnapshot, myLogin: string, sources: Source[],
   if (snap.author.toLowerCase() === myLogin.toLowerCase()) return 'author';
   if (snap.reviewRequestedFromMe || iReviewed) return 'reviewer';
   if (sources.includes('jira')) return 'ticket_owner';
-  return 'watching';
+  if (sources.includes('manual')) return 'watching';
+  return sources.includes('repo') ? 'observer' : 'watching';
 }
 
 /** The single status a card shows. Order matters: the first match is what needs the user most. */
 export function deriveStatus(snap: PrSnapshot, role: Role, stale: boolean): PrStatus {
   if (snap.state === 'merged') return 'merged';
+  // Someone else's PR in a watched repo is context, never something the user must act on.
+  if (role === 'observer') return snap.reviewDecision === 'approved' ? 'approved' : 'manual';
   // A reviewer only needs to act when asked; the author owns failures and conflicts.
   if (role === 'reviewer') {
     if (snap.reviewRequestedFromMe) return 'review';

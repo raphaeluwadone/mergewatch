@@ -24,7 +24,9 @@ export interface PushMessage {
 const NOTIFY_INFO: EventType[] = ['new_comment', 'review_approved', 'merged', 'ticket_assigned'];
 
 /** Whether an event is worth a push: anything needing attention, plus comments from others, approvals, merges and Jira assignments. */
-export function shouldNotify(e: { type: EventType; severity: Severity }, muted: boolean): boolean {
+export function shouldNotify(e: { type: EventType; severity: Severity }, muted: boolean, observer = false): boolean {
+  // Watched-repo PRs only notify for conversation: comments and approvals.
+  if (observer) return !muted && (e.type === 'new_comment' || e.type === 'review_approved') && e.severity === 'info';
   if (e.severity === 'attention') return true;
   if (muted || e.severity === 'noise') return false;
   return NOTIFY_INFO.includes(e.type);

@@ -1,5 +1,7 @@
-export type Source = 'auto' | 'manual' | 'jira';
-export type Role = 'author' | 'reviewer' | 'ticket_owner' | 'watching';
+/** `repo`: picked up because the user watches every PR in that repo. */
+export type Source = 'auto' | 'manual' | 'jira' | 'repo';
+/** `observer`: someone else's PR, tracked only because its repo is watched. */
+export type Role = 'author' | 'reviewer' | 'ticket_owner' | 'watching' | 'observer';
 
 export type CheckStatus = 'passed' | 'failed' | 'running' | 'queued' | 'skipped';
 

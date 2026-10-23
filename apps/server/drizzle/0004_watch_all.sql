@@ -1,0 +1,1 @@
+ALTER TABLE `tracked_repos` ADD `watch_all` integer DEFAULT false NOT NULL;

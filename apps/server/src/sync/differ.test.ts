@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PrSnapshot } from '@mergewatch/shared';
 import { diffSnapshots, type DiffContext } from './differ.ts';
-import { deriveStatus, sectionFor } from './status.ts';
+import { deriveRole, deriveStatus, sectionFor } from './status.ts';
 
 const NOW = new Date('2026-10-20T12:00:00Z');
 
@@ -163,5 +163,37 @@ describe('deriveStatus', () => {
     expect(deriveStatus(snap({ author: 'x', mergeState: 'conflict' }), 'watching', false)).toBe('conflict');
     expect(deriveStatus(snap({ state: 'merged' }), 'author', false)).toBe('merged');
     expect(deriveStatus(snap(), 'author', true)).toBe('stale');
+  });
+});
+
+describe('watched-repo PRs (observer)', () => {
+  const observer = { role: 'observer' as const };
+  const failed = snap({ author: 'dkim', checks: [{ name: 'e2e', status: 'failed', durationSec: 1, url: null, jobId: 1 }] });
+
+  it('arrive quietly', () => {
+    expect(types(null, failed, observer)).toEqual(['first_seen:noise']);
+  });
+
+  it('never need the user, even when checks fail', () => {
+    expect(types(snap({ author: 'dkim' }), failed, observer)).toEqual(['check_failed:info']);
+    expect(deriveStatus(failed, 'observer', false)).toBe('manual');
+    expect(sectionFor(deriveStatus(failed, 'observer', false))).toBe('waiting');
+    expect(deriveStatus(snap({ author: 'dkim', reviewDecision: 'approved' }), 'observer', false)).toBe('approved');
+  });
+
+  it('are never stale for the user', () => {
+    const old = snap({ author: 'dkim', updatedAt: '2026-10-01T00:00:00Z' });
+    expect(types(old, old, observer)).toEqual([]);
+  });
+});
+
+describe('deriveRole', () => {
+  it('lets the user’s own involvement win over a repo watch', () => {
+    const theirs = snap({ author: 'dkim' });
+    expect(deriveRole(theirs, 'me', ['repo'], false)).toBe('observer');
+    expect(deriveRole(theirs, 'me', ['repo', 'manual'], false)).toBe('watching');
+    expect(deriveRole(theirs, 'me', ['repo', 'jira'], false)).toBe('ticket_owner');
+    expect(deriveRole({ ...theirs, reviewRequestedFromMe: true }, 'me', ['repo'], false)).toBe('reviewer');
+    expect(deriveRole(snap(), 'me', ['repo'], false)).toBe('author');
   });
 });

@@ -12,7 +12,7 @@ import { Detail } from '../components/Detail.tsx';
 import { AddPrModal } from '../components/AddPrModal.tsx';
 import { AllQuietState, EmptyFiltersState, FirstRunState, LoadingState } from '../components/States.tsx';
 
-type SourceFilter = 'all' | 'auto' | 'manual' | 'jira';
+type SourceFilter = 'all' | 'auto' | 'manual' | 'jira' | 'repo';
 type RoleFilter = 'all' | 'mine' | 'reviewing';
 
 const byPriority = (a: PrView, b: PrView) =>
@@ -75,7 +75,7 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
   const matches = (p: PrView) =>
     (repo === 'all' || p.repo === repo) &&
     (source === 'all' || p.sources.includes(source)) &&
-    (role === 'all' || (role === 'reviewing' ? p.role === 'reviewer' : p.role !== 'reviewer'));
+    (role === 'all' || (role === 'reviewing' ? p.role === 'reviewer' : p.role !== 'reviewer' && p.role !== 'observer'));
 
   const visible = all.filter((p) => !p.muted && matches(p));
   const muted = all.filter((p) => p.muted && matches(p));
@@ -178,7 +178,7 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
                 </option>
               ))}
             </select>
-            <Segmented label="Source" value={source} onChange={setSource} options={[['all', 'All'], ['auto', 'Auto'], ['manual', 'Manual'], ['jira', 'Jira']]} />
+            <Segmented label="Source" value={source} onChange={setSource} options={[['all', 'All'], ['auto', 'Auto'], ['manual', 'Manual'], ['jira', 'Jira'], ['repo', 'Watched']]} />
             <Segmented label="Role" value={role} onChange={setRole} options={[['all', 'All'], ['mine', 'Mine'], ['reviewing', 'Reviewing']]} />
             <Segmented label="Layout" value={prefs.layout} onChange={(layout) => setPrefs({ layout })} options={[['card', 'Cards'], ['list', 'List']]} />
           </div>

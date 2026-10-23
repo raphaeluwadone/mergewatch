@@ -31,7 +31,7 @@ export function checksLine(c: ChecksSummary): string {
 
 export function sourceLabels(pr: Pick<PrView, 'sources' | 'jira'>): string[] {
   return pr.sources
-    .map((s: Source) => (s === 'manual' ? 'Added by you' : s === 'jira' ? `${pr.jira?.key ?? 'Jira'} · via Jira` : null))
+    .map((s: Source) => (s === 'manual' ? 'Added by you' : s === 'jira' ? `${pr.jira?.key ?? 'Jira'} · via Jira` : s === 'repo' ? 'Repo watch' : null))
     .filter((x): x is string => x !== null);
 }
 
