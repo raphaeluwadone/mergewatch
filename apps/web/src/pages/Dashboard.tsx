@@ -38,18 +38,50 @@ function Segmented<T extends string>({ value, options, onChange, label }: { valu
   );
 }
 
-function Collapsible({ title, count, color, open, onToggle, children }: { title: string; count: number; color: string; open: boolean; onToggle: () => void; children: ReactNode }) {
-  if (count === 0) return null;
-  return (
-    <section>
-      <button className="section-head" style={{ color }} aria-expanded={open} onClick={onToggle}>
+/** A housing panel for one dashboard section, tinted by its status color. */
+function SectionPanel(props: {
+  title: string;
+  hint: string;
+  count: number;
+  color: string;
+  children: ReactNode;
+  collapsible?: { open: boolean; onToggle: () => void };
+}) {
+  const { title, hint, count, color, children, collapsible } = props;
+  const open = collapsible ? collapsible.open : true;
+  const heading = (
+    <>
+      <span className="section-dot" aria-hidden="true" />
+      <span className="section-title">{title}</span>
+      <span className="section-count">{count}</span>
+      <span className="section-hint">{hint}</span>
+      {collapsible && (
         <span className="chev" aria-hidden="true">
           ▸
         </span>
-        {title} · {count}
-      </button>
-      {open && children}
+      )}
+    </>
+  );
+  return (
+    <section className={`section-panel${open ? '' : ' collapsed'}`} style={{ ['--accent' as string]: color }}>
+      {collapsible ? (
+        <button className="section-head" aria-expanded={open} onClick={collapsible.onToggle}>
+          {heading}
+        </button>
+      ) : (
+        <h2 className="section-head">{heading}</h2>
+      )}
+      {open && <div className="section-body">{children}</div>}
     </section>
+  );
+}
+
+function Collapsible({ title, hint, count, color, open, onToggle, children }: { title: string; hint: string; count: number; color: string; open: boolean; onToggle: () => void; children: ReactNode }) {
+  if (count === 0) return null;
+  return (
+    <SectionPanel title={title} hint={hint} count={count} color={color} collapsible={{ open, onToggle }}>
+      {children}
+    </SectionPanel>
   );
 }
 
@@ -195,7 +227,7 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
         </div>
       </Header>
 
-      <main>
+      <main className="dashboard-main">
         {loading ? (
           <LoadingState />
         ) : firstRun ? (
@@ -219,18 +251,18 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
               <AllQuietState />
             ) : (
               <>
-                <PrSection title="Needs you" color="var(--danger)" prs={needs} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={() => undefined} />
-                <PrSection title="Waiting on others" color="var(--info)" prs={waiting} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={(p) => (p.sources.length === 1 && p.sources[0] === 'manual' ? { label: 'untrack', run: untrack, danger: true } : undefined)} />
+                <PrSection title="Needs you" hint="Your move" color="var(--danger)" prs={needs} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={() => undefined} />
+                <PrSection title="Waiting on others" hint="Someone else's move" color="var(--info)" prs={waiting} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={(p) => (p.sources.length === 1 && p.sources[0] === 'manual' ? { label: 'untrack', run: untrack, danger: true } : undefined)} />
               </>
             )}
-            <Collapsible title="Green and quiet" count={green.length} color="var(--success)" open={open.green} onToggle={() => setOpen((o) => ({ ...o, green: !o.green }))}>
+            <Collapsible title="Green and quiet" hint="Approved or merged" count={green.length} color="var(--success)" open={open.green} onToggle={() => setOpen((o) => ({ ...o, green: !o.green }))}>
               <List layout={prefs.layout}>
                 {green.map((p, i) => (
                   <PrItem key={p.id} pr={p} index={i} focused={flat[focus]?.id === p.id} highlighted={highlight === p.id} onOpen={openPr} action={p.status === 'merged' ? { label: 'dismiss', run: dismiss } : undefined} />
                 ))}
               </List>
             </Collapsible>
-            <Collapsible title="Tickets without a PR" count={data.tickets.length} color="var(--text-mute)" open={open.tickets} onToggle={() => setOpen((o) => ({ ...o, tickets: !o.tickets }))}>
+            <Collapsible title="Tickets without a PR" hint="Assigned to you, nothing opened yet" count={data.tickets.length} color="var(--text-mute)" open={open.tickets} onToggle={() => setOpen((o) => ({ ...o, tickets: !o.tickets }))}>
               {data.tickets.map((t) => (
                 <div key={t.key} className="ticket-row">
                   <div style={{ flex: 1 }}>
@@ -249,8 +281,7 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
                 </div>
               ))}
             </Collapsible>
-            <Collapsible title="Muted" count={muted.length} color="var(--text-mute)" open={open.muted} onToggle={() => setOpen((o) => ({ ...o, muted: !o.muted }))}>
-              <div style={{ padding: '0 24px 6px', fontSize: 12, color: 'var(--text-mute)' }}>Muted PRs come back on their own when something needs you.</div>
+            <Collapsible title="Muted" hint="Back on their own when something needs you" count={muted.length} color="var(--text-mute)" open={open.muted} onToggle={() => setOpen((o) => ({ ...o, muted: !o.muted }))}>
               <List layout={prefs.layout}>
                 {muted.map((p, i) => (
                   <PrItem key={p.id} pr={p} index={i} focused={false} highlighted={false} onOpen={openPr} action={{ label: 'unmute', run: unmute }} />
@@ -288,6 +319,7 @@ interface ItemAction {
 
 function PrSection(props: {
   title: string;
+  hint: string;
   color: string;
   prs: PrView[];
   layout: 'card' | 'list';
@@ -298,16 +330,13 @@ function PrSection(props: {
 }) {
   if (props.prs.length === 0) return null;
   return (
-    <section>
-      <h2 className="section-head" style={{ color: props.color, margin: 0 }}>
-        {props.title} · {props.prs.length}
-      </h2>
+    <SectionPanel title={props.title} hint={props.hint} count={props.prs.length} color={props.color}>
       <List layout={props.layout}>
         {props.prs.map((p, i) => (
           <PrItem key={p.id} pr={p} index={i} focused={props.focusId === p.id} highlighted={props.highlight === p.id} onOpen={props.onOpen} action={props.actionFor(p)} />
         ))}
       </List>
-    </section>
+    </SectionPanel>
   );
 }
 
