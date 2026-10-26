@@ -1,4 +1,4 @@
-import type { CheckRun, CheckStatus, MergeState, PrSnapshot, Review, ReviewDecision } from '@mergewatch/shared';
+import type { CheckRun, CheckStatus, MergeInfo, MergeMethod, MergeState, PrSnapshot, Review, ReviewDecision } from '@mergewatch/shared';
 import { graphql, rest } from './client.ts';
 
 const PR_FIELDS = `
@@ -7,7 +7,13 @@ fragment PrFields on PullRequest {
   author { login }
   headRefName baseRefName headRefOid
   mergeable mergeStateStatus reviewDecision
-  repository { nameWithOwner }
+  isMergeQueueEnabled viewerCanEnableAutoMerge viewerCanDisableAutoMerge
+  autoMergeRequest { mergeMethod }
+  headRepository { nameWithOwner }
+  repository {
+    nameWithOwner mergeCommitAllowed squashMergeAllowed rebaseMergeAllowed autoMergeAllowed
+    deleteBranchOnMerge viewerPermission viewerDefaultMergeMethod
+  }
   reviewRequests(first: 20) { nodes { requestedReviewer { ... on User { login } } } }
   reviews(last: 30) { nodes { author { login } state submittedAt body } }
   comments(last: 20) { totalCount nodes { author { login } createdAt body url } }
@@ -40,7 +46,21 @@ interface RawPr {
   mergeable: 'MERGEABLE' | 'CONFLICTING' | 'UNKNOWN';
   mergeStateStatus: string;
   reviewDecision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REVIEW_REQUIRED' | null;
-  repository: { nameWithOwner: string };
+  isMergeQueueEnabled: boolean;
+  viewerCanEnableAutoMerge: boolean;
+  viewerCanDisableAutoMerge: boolean;
+  autoMergeRequest: { mergeMethod: string } | null;
+  headRepository: { nameWithOwner: string } | null;
+  repository: {
+    nameWithOwner: string;
+    mergeCommitAllowed: boolean;
+    squashMergeAllowed: boolean;
+    rebaseMergeAllowed: boolean;
+    autoMergeAllowed: boolean;
+    deleteBranchOnMerge: boolean;
+    viewerPermission: string | null;
+    viewerDefaultMergeMethod: string;
+  };
   reviewRequests: { nodes: { requestedReviewer: { login?: string } | null }[] };
   reviews: { nodes: { author: { login: string } | null; state: string; submittedAt: string | null; body: string }[] };
   comments: { totalCount: number; nodes: RawComment[] };
@@ -131,6 +151,33 @@ const REVIEW_DECISIONS: Record<string, ReviewDecision> = {
   REVIEW_REQUIRED: 'review_required',
 };
 
+const toMethod = (m: string | null | undefined): MergeMethod | null =>
+  m === 'MERGE' ? 'merge' : m === 'SQUASH' ? 'squash' : m === 'REBASE' ? 'rebase' : null;
+
+function mergeInfo(pr: RawPr): MergeInfo {
+  const r = pr.repository;
+  const methods: MergeMethod[] = [
+    ...(r.squashMergeAllowed ? ['squash' as const] : []),
+    ...(r.mergeCommitAllowed ? ['merge' as const] : []),
+    ...(r.rebaseMergeAllowed ? ['rebase' as const] : []),
+  ];
+  const preferred = toMethod(r.viewerDefaultMergeMethod);
+  const autoMethod = toMethod(pr.autoMergeRequest?.mergeMethod);
+  return {
+    status: pr.mergeStateStatus,
+    methods,
+    defaultMethod: preferred && methods.includes(preferred) ? preferred : (methods[0] ?? 'merge'),
+    autoMergeAllowed: r.autoMergeAllowed,
+    autoMerge: autoMethod ? { method: autoMethod } : null,
+    canEnableAutoMerge: pr.viewerCanEnableAutoMerge,
+    canDisableAutoMerge: pr.viewerCanDisableAutoMerge,
+    queue: pr.isMergeQueueEnabled,
+    deleteBranchOnMerge: r.deleteBranchOnMerge,
+    sameRepo: pr.headRepository?.nameWithOwner === r.nameWithOwner,
+    canWrite: ['WRITE', 'MAINTAIN', 'ADMIN'].includes(r.viewerPermission ?? ''),
+  };
+}
+
 export function normalizePr(pr: RawPr, myLogin: string): PrSnapshot {
   const me = myLogin.toLowerCase();
   return {
@@ -169,6 +216,7 @@ export function normalizePr(pr: RawPr, myLogin: string): PrSnapshot {
     createdAt: pr.createdAt,
     updatedAt: pr.updatedAt,
     mergedAt: pr.mergedAt,
+    merge: mergeInfo(pr),
   };
 }
 

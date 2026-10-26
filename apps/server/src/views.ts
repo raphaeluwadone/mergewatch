@@ -18,7 +18,7 @@ import { db } from './db/client.ts';
 import { analyses, events, prSources, prs, tickets } from './db/schema.ts';
 import type { User } from './auth/session.ts';
 import { isStale, latestChangeRequest, latestCommentFromOthers } from './sync/differ.ts';
-import { deriveRole, deriveStatus, sectionFor, summarizeChecks } from './sync/status.ts';
+import { deriveRole, deriveStatus, mergeReadiness, sectionFor, summarizeChecks } from './sync/status.ts';
 
 type PrRow = typeof prs.$inferSelect;
 type TicketRow = typeof tickets.$inferSelect;
@@ -237,5 +237,9 @@ export function detailView(user: User, prId: number): PrDetail | null {
     }
   }
 
-  return { ...view, checkList: snap.checks, timeline, siblings };
+  const merge = snap.merge
+    ? { ...snap.merge, ...mergeReadiness(snap), headSha: snap.headSha, baseRef: snap.baseRef, headRef: snap.headRef }
+    : null;
+
+  return { ...view, merge, checkList: snap.checks, timeline, siblings };
 }

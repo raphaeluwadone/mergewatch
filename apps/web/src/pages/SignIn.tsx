@@ -64,7 +64,7 @@ export function SignIn() {
           )}
         </div>
         <p className="small">
-          {config?.org ? `For members of ${config.org}. ` : ''}Mergewatch only reads your repos and pull requests. It never writes to GitHub.
+          {config?.org ? `For members of ${config.org}. ` : ''}Mergewatch reads your repos and pull requests. It only changes something on GitHub when you merge a PR or turn on auto-merge.
         </p>
       </div>
     </div>

@@ -8,7 +8,11 @@ import { decrypt } from '../crypto.ts';
 import { requireUser, type AppEnv, type User } from '../auth/session.ts';
 import { disconnectJira } from '../auth/jira.ts';
 import { GithubForbiddenError, GithubNotFoundError } from '../github/client.ts';
-import { fetchPr, listMyRepos, type RepoSummary } from '../github/prs.ts';
+import { fetchPr, fetchPrsByIds, listMyRepos, type RepoSummary } from '../github/prs.ts';
+import { mergePr, setAutoMerge } from '../github/merge.ts';
+import { mergeReadiness } from '../sync/status.ts';
+import { demoMerge } from '../demo/merge.ts';
+import type { MergeMethod, PrSnapshot } from '@mergewatch/shared';
 import { env } from '../env.ts';
 import { DEMO_REPOS, demoLookup } from '../demo/fixtures.ts';
 import { isSyncing, requestSync } from '../sync/poller.ts';
@@ -124,6 +128,78 @@ api.post('/prs/:id/mute', async (c) => {
   if (!id) return c.json({ error: 'not_found' }, 404);
   const { muted } = await body(c);
   db.update(prs).set({ muted: muted !== false }).where(eq(prs.id, id)).run();
+  return c.json({ ok: true });
+});
+
+const METHODS: MergeMethod[] = ['merge', 'squash', 'rebase'];
+
+/** The PR as GitHub has it right now; merge decisions never rely on the last poll. */
+async function freshSnapshot(user: User, id: number): Promise<PrSnapshot | null> {
+  const row = db.select().from(prs).where(eq(prs.id, id)).get();
+  if (!row) return null;
+  if (isDemoUser(user)) return row.snapshot as PrSnapshot;
+  // Read-only: the stored snapshot stays as the differ last saw it, so the next sync still reports what changed.
+  const [snap] = await fetchPrsByIds(token(user), user.login, [row.nodeId]);
+  return snap ?? null;
+}
+
+api.post('/prs/:id/merge', async (c) => {
+  const id = prId(c);
+  if (!id) return c.json({ error: 'not_found' }, 404);
+  const user = c.get('user');
+  const { method, deleteBranch, sha } = await body(c);
+  if (typeof method !== 'string' || !METHODS.includes(method as MergeMethod) || typeof sha !== 'string') {
+    return c.json({ error: 'invalid' }, 400);
+  }
+  const snap = await freshSnapshot(user, id);
+  if (!snap) return c.json({ error: 'not_found' }, 404);
+  if (snap.headSha !== sha) return c.json({ error: 'changed', message: 'New commits were pushed since you opened this. Review them first.' }, 409);
+  const readiness = mergeReadiness(snap);
+  if (!readiness.ready) return c.json({ error: 'not_ready', message: readiness.reason }, 409);
+  if (!snap.merge!.queue && !snap.merge!.methods.includes(method as MergeMethod)) {
+    return c.json({ error: 'method_not_allowed', message: 'This repo doesn’t allow that merge method.' }, 400);
+  }
+
+  const outcome = isDemoUser(user)
+    ? demoMerge(id, snap, method as MergeMethod)
+    : await mergePr(token(user), snap, method as MergeMethod, deleteBranch === true);
+  if (!outcome.ok) return c.json({ error: outcome.error, message: outcome.message }, 409);
+
+  const how = { merge: 'merge commit', squash: 'squash', rebase: 'rebase' }[method as MergeMethod];
+  const text = outcome.queued ? 'You added this to the merge queue from Mergewatch' : `You merged this from Mergewatch (${how})`;
+  db.insert(events).values({ prId: id, type: 'merged_from_app', severity: 'noise', text, detail: outcome.branchDeleted ? `Deleted branch ${snap.headRef}` : null }).run();
+  requestSync(user.id);
+  return c.json(outcome);
+});
+
+api.post('/prs/:id/auto-merge', async (c) => {
+  const id = prId(c);
+  if (!id) return c.json({ error: 'not_found' }, 404);
+  const user = c.get('user');
+  const { enabled, method } = await body(c);
+  if (typeof enabled !== 'boolean' || (enabled && (typeof method !== 'string' || !METHODS.includes(method as MergeMethod)))) {
+    return c.json({ error: 'invalid' }, 400);
+  }
+  const snap = await freshSnapshot(user, id);
+  if (!snap?.merge) return c.json({ error: 'not_found' }, 404);
+  if (enabled && !snap.merge.autoMergeAllowed) return c.json({ error: 'not_allowed', message: 'Auto-merge is turned off in this repo’s GitHub settings.' }, 409);
+  if (enabled && mergeReadiness(snap).ready) return c.json({ error: 'already_ready', message: 'This PR is ready now. Merge it directly.' }, 409);
+
+  if (!isDemoUser(user)) {
+    try {
+      await setAutoMerge(token(user), snap, enabled, (method as MergeMethod) ?? snap.merge.defaultMethod);
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'unknown reason';
+      return c.json({ error: 'failed', message: `GitHub refused: ${reason}` }, 409);
+    }
+  } else {
+    const merge = { ...snap.merge, autoMerge: enabled ? { method: method as MergeMethod } : null };
+    db.update(prs).set({ snapshot: { ...snap, merge } }).where(eq(prs.id, id)).run();
+  }
+  db.insert(events)
+    .values({ prId: id, type: 'auto_merge_changed', severity: 'noise', text: enabled ? `You turned on auto-merge (${method})` : 'You turned off auto-merge' })
+    .run();
+  requestSync(user.id);
   return c.json({ ok: true });
 });
 

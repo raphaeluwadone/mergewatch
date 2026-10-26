@@ -6,6 +6,7 @@ import { navigate } from '../lib/router.ts';
 import { CATEGORY, STATUS } from '../lib/meta.ts';
 import { checksLine, repoName, sourceLabels, timeAgo } from '../lib/format.ts';
 import { CategoryGlyph, CheckRunIcon, CloseIcon, StatusIcon } from './icons.tsx';
+import { MergeBox } from './MergeBox.tsx';
 
 function AgentCard({ agent }: { agent: AgentAnalysis }) {
   if (agent.status === 'analyzing') {
@@ -133,6 +134,8 @@ export function Detail({ id, mode, onClose }: { id: string; mode: 'panel' | 'pag
             </a>
           )}
         </div>
+
+        <MergeBox pr={pr} />
 
         {pr.jira && (
           <div className="callout">

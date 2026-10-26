@@ -10,7 +10,7 @@ import { consumeState, createState } from './oauth-state.ts';
 import { endSession, startSession } from './session.ts';
 import { requestSync } from '../sync/poller.ts';
 
-// OAuth Apps have no read-only repo scope; Mergewatch only ever makes read calls with this token.
+// `repo` covers reading PRs and merging them; the only writes are merges, auto-merge and branch deletes the user asks for.
 const scopes = () => (env.github.allowedOrg ? 'repo read:org' : 'repo');
 const callbackUrl = () => `${env.appUrl}/auth/github/callback`;
 const signinError = (code: string) => `${env.appUrl}/signin?error=${code}`;

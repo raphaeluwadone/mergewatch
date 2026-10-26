@@ -29,7 +29,7 @@ Open http://localhost:5180 and choose **Use the demo account**. Demo mode is ref
 2. Homepage URL `http://localhost:5180`, callback URL `http://localhost:5180/auth/github/callback`.
 3. Put the client ID and a new client secret in `.env` as `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
 
-Mergewatch sees whatever your GitHub account can see. OAuth Apps can't be scoped to read-only, so it asks for `repo`, but it only makes read calls. To limit sign-in to one organization, set `GITHUB_ALLOWED_ORG`.
+Mergewatch sees whatever your GitHub account can see, using the `repo` scope. It reads PRs, and only writes to GitHub when you ask it to: merging a PR, turning auto-merge on or off, or deleting a merged branch. To limit sign-in to one organization, set `GITHUB_ALLOWED_ORG`.
 
 If an organization restricts third-party OAuth apps, its private repos stay hidden until an org owner approves Mergewatch.
 
@@ -47,6 +47,14 @@ Push notifications reach you even when no Mergewatch tab is open, as long as the
 You get one per PR per sync, for anything that needs you, comments from others, approvals, merges and Jira assignments. Quiet hours and muted PRs are respected.
 
 Browsers can't play custom notification sounds, so on a Mac the server plays your chosen sound (a macOS sound or an uploaded file) with `afplay` and the notification itself stays silent.
+
+## Merging
+
+Open a PR and use **Merge…** in its panel. Merging is only offered when the PR is fully ready: every check passed, review requirements met, no conflicts, and GitHub reports it mergeable. Mergewatch never uses an admin override of branch protection.
+
+The merge is pinned to the commit you were looking at, so if someone pushes in between, GitHub rejects it. You can pick squash, merge commit or rebase (whatever the repo allows), and delete the branch afterwards. Repos with a merge queue get **Add to queue** instead.
+
+For PRs that aren't ready yet, **Turn on auto-merge** hands off to GitHub's own auto-merge, which merges once every check and review passes. The repo needs "Allow auto-merge" enabled in its GitHub settings.
 
 ## The agent
 

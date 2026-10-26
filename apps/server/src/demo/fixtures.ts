@@ -46,6 +46,19 @@ function pr(n: number, repo: string, title: string, over: Partial<PrSnapshot>): 
     createdAt: hoursAgo(72),
     updatedAt: hoursAgo(1),
     mergedAt: null,
+    merge: {
+      status: 'CLEAN',
+      methods: ['squash', 'merge', 'rebase'],
+      defaultMethod: 'squash',
+      autoMergeAllowed: true,
+      autoMerge: null,
+      canEnableAutoMerge: true,
+      canDisableAutoMerge: true,
+      queue: false,
+      deleteBranchOnMerge: false,
+      sameRepo: true,
+      canWrite: true,
+    },
     ...over,
   };
 }

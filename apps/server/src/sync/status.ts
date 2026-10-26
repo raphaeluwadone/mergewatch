@@ -59,3 +59,35 @@ export function sectionFor(status: PrStatus): Section {
       return 'green';
   }
 }
+
+/**
+ * Whether the user can merge right now. Stricter than GitHub: everything must be green and
+ * nothing outstanding, and admin overrides of branch protection are never used.
+ */
+export function mergeReadiness(snap: PrSnapshot): { ready: boolean; reason: string | null } {
+  const no = (reason: string) => ({ ready: false, reason });
+  const m = snap.merge;
+  if (snap.state !== 'open') return no(snap.state === 'merged' ? 'Already merged.' : 'This PR is closed.');
+  if (!m) return no('Waiting for the next sync to check mergeability.');
+  if (!m.canWrite) return no("You don't have permission to merge in this repo.");
+  if (snap.isDraft) return no('This is a draft PR.');
+  if (snap.mergeState === 'conflict' || m.status === 'DIRTY') return no('Resolve the merge conflicts first.');
+  const checks = summarizeChecks(snap);
+  if (checks.failed) return no(`${checks.failed} ${checks.failed === 1 ? 'check is' : 'checks are'} failing.`);
+  if (checks.running) return no('Checks are still running.');
+  if (snap.reviewDecision === 'changes_requested') return no('Changes were requested.');
+  if (snap.reviewDecision === 'review_required') return no('Needs an approving review.');
+  switch (m.status) {
+    case 'CLEAN':
+    case 'HAS_HOOKS':
+      return { ready: true, reason: null };
+    case 'BEHIND':
+      return no('The branch is behind its base. Update it on GitHub first.');
+    case 'BLOCKED':
+      return no('Blocked by branch protection rules.');
+    case 'UNSTABLE':
+      return no('Some checks are not passing.');
+    default:
+      return no('GitHub is still working out whether this can merge.');
+  }
+}

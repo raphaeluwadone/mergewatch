@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { PrSnapshot } from '@mergewatch/shared';
 import { diffSnapshots, type DiffContext } from './differ.ts';
-import { deriveRole, deriveStatus, sectionFor } from './status.ts';
+import { deriveRole, deriveStatus, mergeReadiness, sectionFor } from './status.ts';
 
 const NOW = new Date('2026-10-20T12:00:00Z');
 
@@ -195,5 +195,43 @@ describe('deriveRole', () => {
     expect(deriveRole(theirs, 'me', ['repo', 'jira'], false)).toBe('ticket_owner');
     expect(deriveRole({ ...theirs, reviewRequestedFromMe: true }, 'me', ['repo'], false)).toBe('reviewer');
     expect(deriveRole(snap(), 'me', ['repo'], false)).toBe('author');
+  });
+});
+
+describe('mergeReadiness', () => {
+  const merge = {
+    status: 'CLEAN',
+    methods: ['squash', 'merge'] as ('squash' | 'merge')[],
+    defaultMethod: 'squash' as const,
+    autoMergeAllowed: true,
+    autoMerge: null,
+    canEnableAutoMerge: true,
+    canDisableAutoMerge: false,
+    queue: false,
+    deleteBranchOnMerge: false,
+    sameRepo: true,
+    canWrite: true,
+  };
+  const ready = (over: Partial<PrSnapshot> = {}, m: Partial<typeof merge> = {}) =>
+    mergeReadiness(snap({ reviewDecision: 'approved', merge: { ...merge, ...m }, ...over }));
+
+  it('is ready only when everything is green and approved', () => {
+    expect(ready()).toEqual({ ready: true, reason: null });
+    expect(ready({ reviewDecision: null })).toEqual({ ready: true, reason: null });
+  });
+
+  it('explains every blocker in plain words', () => {
+    expect(ready({ isDraft: true }).reason).toBe('This is a draft PR.');
+    expect(ready({ mergeState: 'conflict' }).reason).toBe('Resolve the merge conflicts first.');
+    expect(ready({ checks: [{ name: 'x', status: 'failed', durationSec: 1, url: null, jobId: 1 }] }).reason).toBe('1 check is failing.');
+    expect(ready({ checks: [{ name: 'x', status: 'running', durationSec: null, url: null, jobId: 1 }] }).reason).toBe('Checks are still running.');
+    expect(ready({ reviewDecision: 'review_required' }).reason).toBe('Needs an approving review.');
+    expect(ready({ reviewDecision: 'changes_requested' }).reason).toBe('Changes were requested.');
+    expect(ready({}, { status: 'BLOCKED' }).reason).toBe('Blocked by branch protection rules.');
+    expect(ready({}, { status: 'BEHIND' }).ready).toBe(false);
+    expect(ready({}, { status: 'UNSTABLE' }).ready).toBe(false);
+    expect(ready({}, { canWrite: false }).reason).toBe("You don't have permission to merge in this repo.");
+    expect(ready({ state: 'merged' }).reason).toBe('Already merged.');
+    expect(mergeReadiness(snap({ reviewDecision: 'approved' })).ready).toBe(false);
   });
 });

@@ -34,6 +34,26 @@ export interface Comment {
   path?: string | null;
 }
 
+export type MergeMethod = 'merge' | 'squash' | 'rebase';
+
+/** What GitHub allows for merging this PR. Absent on snapshots stored before merging was added. */
+export interface MergeInfo {
+  /** GitHub's mergeStateStatus: CLEAN, BLOCKED, BEHIND, UNSTABLE, DIRTY, DRAFT, UNKNOWN, HAS_HOOKS. */
+  status: string;
+  methods: MergeMethod[];
+  defaultMethod: MergeMethod;
+  autoMergeAllowed: boolean;
+  autoMerge: { method: MergeMethod } | null;
+  canEnableAutoMerge: boolean;
+  canDisableAutoMerge: boolean;
+  /** The base branch uses a merge queue, so "merge" means "add to the queue". */
+  queue: boolean;
+  deleteBranchOnMerge: boolean;
+  /** Head branch lives in the same repo (not a fork), so it can be deleted after merging. */
+  sameRepo: boolean;
+  canWrite: boolean;
+}
+
 /** Normalized PR state as fetched from GitHub. Stored per poll; the differ compares two of these. */
 export interface PrSnapshot {
   nodeId: string;
@@ -58,6 +78,7 @@ export interface PrSnapshot {
   createdAt: string;
   updatedAt: string;
   mergedAt: string | null;
+  merge?: MergeInfo;
 }
 
 export type PrStatus =
@@ -95,7 +116,9 @@ export type EventType =
   | 'ticket_assigned'
   | 'pr_linked_to_ticket'
   | 'ticket_unassigned'
-  | 'ticket_out_of_sync';
+  | 'ticket_out_of_sync'
+  | 'merged_from_app'
+  | 'auto_merge_changed';
 
 export interface PrEvent {
   id: number;
@@ -174,7 +197,17 @@ export interface TimelineEvent extends PrEvent {
   unread: boolean;
 }
 
+export interface MergeView extends MergeInfo {
+  ready: boolean;
+  /** Why it can't be merged yet, in plain words. */
+  reason: string | null;
+  headSha: string;
+  baseRef: string;
+  headRef: string;
+}
+
 export interface PrDetail extends PrView {
+  merge: MergeView | null;
   checkList: CheckRun[];
   timeline: TimelineEvent[];
   siblings: { id: string; repo: string; number: number; title: string }[];
