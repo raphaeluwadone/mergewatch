@@ -219,7 +219,7 @@ export function Dashboard({ me, detailId, onTour, modalOpen }: { me: Me; detailI
               <AllQuietState />
             ) : (
               <>
-                <PrSection title="Needs you" color="var(--danger)" prs={needs} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={() => ({ label: 'mark seen', run: markSeen })} />
+                <PrSection title="Needs you" color="var(--danger)" prs={needs} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={() => undefined} />
                 <PrSection title="Waiting on others" color="var(--info)" prs={waiting} layout={prefs.layout} focusId={flat[focus]?.id} highlight={highlight} onOpen={openPr} actionFor={(p) => (p.sources.length === 1 && p.sources[0] === 'manual' ? { label: 'untrack', run: untrack, danger: true } : undefined)} />
               </>
             )}

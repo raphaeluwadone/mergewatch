@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import type { AgentAnalysis, PrDetail } from '@mergewatch/shared';
 import { usePrDetail, useRefresh, showToast } from '../lib/data.ts';
 import { post } from '../lib/api.ts';
@@ -53,15 +54,16 @@ function AgentCard({ agent }: { agent: AgentAnalysis }) {
   );
 }
 
-function Timeline({ pr }: { pr: PrDetail }) {
-  const firstRead = pr.timeline.findIndex((e) => !e.unread);
-  const hasUnread = pr.timeline.some((e) => e.unread);
+function Timeline({ pr, unreadIds }: { pr: PrDetail; unreadIds: Set<number> }) {
+  const isUnread = (id: number) => unreadIds.has(id);
+  const firstRead = pr.timeline.findIndex((e) => !isUnread(e.id));
+  const hasUnread = pr.timeline.some((e) => isUnread(e.id));
   return (
     <div>
       {pr.timeline.map((e, i) => (
         <div key={e.id}>
           {hasUnread && i === firstRead && <div className="divider">new since you last looked ↑</div>}
-          <div className={`event ${e.severity}${e.unread ? ' unread' : ''}`}>
+          <div className={`event ${e.severity}${isUnread(e.id) ? ' unread' : ''}`}>
             <time className="mono" dateTime={e.createdAt}>
               {timeAgo(e.createdAt)}
             </time>
@@ -85,6 +87,22 @@ export function Detail({ id, mode, onClose }: { id: string; mode: 'panel' | 'pag
   useEffect(() => {
     closeRef.current?.focus();
   }, [id]);
+
+  // Opening a PR counts as seeing it. What was new stays marked until the panel closes,
+  // even if a background sync refreshes the data underneath.
+  const qc = useQueryClient();
+  const [unreadAtOpen, setUnreadAtOpen] = useState<{ id: string; ids: Set<number> } | null>(null);
+  useEffect(() => {
+    if (!pr || pr.id !== id || unreadAtOpen?.id === id) return;
+    setUnreadAtOpen({ id, ids: new Set(pr.timeline.filter((e) => e.unread).map((e) => e.id)) });
+    if (pr.unreadCount > 0) {
+      void post(`/api/prs/${id}/seen`).then(() => {
+        void qc.invalidateQueries({ queryKey: ['dashboard'] });
+        void qc.invalidateQueries({ queryKey: ['pr', id] });
+      });
+    }
+  }, [pr, id, unreadAtOpen, qc]);
+  const unreadIds = unreadAtOpen?.id === id ? unreadAtOpen.ids : new Set<number>();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -224,12 +242,9 @@ export function Detail({ id, mode, onClose }: { id: string; mode: 'panel' | 'pag
         )}
 
         <div className="block-title">Timeline</div>
-        <Timeline pr={pr} />
+        <Timeline pr={pr} unreadIds={unreadIds} />
 
         <div className="detail-actions">
-          <button className="btn btn-outline" onClick={() => act('seen', undefined, 'Marked seen')} disabled={pr.unreadCount === 0}>
-            Mark seen
-          </button>
           <button className="btn btn-outline" onClick={() => act('mute', { muted: !pr.muted }, pr.muted ? 'Unmuted' : 'Muted until the next thing that needs you')}>
             {pr.muted ? 'Unmute' : 'Mute'}
           </button>
