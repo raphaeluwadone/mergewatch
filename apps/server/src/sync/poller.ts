@@ -133,6 +133,14 @@ async function sync(user: User, token: string) {
       }
     }
   }
+  // Jira couldn't be asked this time (outage, or expired awaiting reconnect): keep the links we had
+  // rather than dismissing Jira-only PRs and re-announcing them once Jira is back.
+  const jiraUnknown = !assigned && (user.jiraStatus === 'connected' || user.jiraStatus === 'expired');
+  if (jiraUnknown) {
+    for (const row of rows) {
+      for (const s of prevSourcesByPr.get(row.id) ?? []) if (s.source === 'jira' && s.jiraKey) attr(row.nodeId).jiraKeys.add(s.jiraKey);
+    }
+  }
 
   // Refresh everything we track that the searches didn't return, so merges and closes are seen.
   const toRefresh = new Set<string>();

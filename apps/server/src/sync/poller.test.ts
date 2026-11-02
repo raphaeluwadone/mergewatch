@@ -18,8 +18,14 @@ vi.mock('../github/prs.ts', () => github);
 const push = vi.hoisted(() => ({ notifyUser: vi.fn(async () => {}) }));
 vi.mock('../push/send.ts', () => push);
 
+const jira = vi.hoisted(() => {
+  class JiraAuthError extends Error {}
+  return { JiraAuthError, assignedIssues: vi.fn(async (): Promise<unknown[]> => []), getIssue: vi.fn(async () => null) };
+});
+vi.mock('../jira/client.ts', () => jira);
+
 const { db, runMigrations, env } = await import('./test-db.ts');
-const { prSources, prs, trackedRepos, users } = await import('../db/schema.ts');
+const { events, prSources, prs, trackedRepos, users } = await import('../db/schema.ts');
 const { encrypt } = await import('../crypto.ts');
 const { syncUser } = await import('./poller.ts');
 const { listViews } = await import('../views.ts');
@@ -105,5 +111,56 @@ describe('watching every PR in a repo', () => {
 
     expect(github.listOpenPrHeads).not.toHaveBeenCalled();
     expect(listViews(user()).prs).toEqual([]);
+  });
+});
+
+describe('a Jira outage', () => {
+  let jiraUserId = 0;
+  const ticket = { key: 'ABC-1', title: 'Fix login', status: 'In Progress', statusCategory: 'indeterminate', assignee: 'Me', assigneeAccountId: 'acc' };
+  const myPr = teammatePr({ nodeId: 'PR_JIRA', repo: 'acme/api', number: 7, title: 'ABC-1 fix login', headRef: 'ABC-1-fix-login', checks: [] });
+  const jiraSources = () =>
+    db
+      .select({ source: prSources.source, key: prSources.jiraKey })
+      .from(prSources)
+      .innerJoin(prs, eq(prs.id, prSources.prId))
+      .where(eq(prs.userId, jiraUserId))
+      .all();
+  const eventTypes = () =>
+    db
+      .select({ type: events.type })
+      .from(events)
+      .innerJoin(prs, eq(prs.id, events.prId))
+      .where(eq(prs.userId, jiraUserId))
+      .all()
+      .map((e) => e.type);
+
+  beforeAll(async () => {
+    jiraUserId = db
+      .insert(users)
+      .values({ githubId: 2, login: 'me2', githubTokenEnc: encrypt('token'), initialSyncDone: true, jiraStatus: 'connected', jiraCloudId: 'cloud' })
+      .returning({ id: users.id })
+      .get().id;
+    db.insert(trackedRepos).values({ userId: jiraUserId, fullName: 'acme/api' }).run();
+    jira.assignedIssues.mockResolvedValue([ticket]);
+    github.listOpenPrHeads.mockResolvedValue([{ id: 'PR_JIRA', title: myPr.title, headRefName: myPr.headRef }]);
+    github.fetchPrsByIds.mockResolvedValue([myPr]);
+    await syncUser(jiraUserId);
+  });
+
+  it('keeps Jira-linked PRs and their links while Jira is unreachable', async () => {
+    expect(jiraSources()).toEqual([{ source: 'jira', key: 'ABC-1' }]);
+    jira.assignedIssues.mockRejectedValue(new Error('Jira search returned 503'));
+    await syncUser(jiraUserId);
+
+    expect(jiraSources()).toEqual([{ source: 'jira', key: 'ABC-1' }]);
+    expect(db.select().from(prs).where(eq(prs.userId, jiraUserId)).get()!.dismissed).toBe(false);
+  });
+
+  it("doesn't re-announce the link when Jira comes back", async () => {
+    const before = eventTypes().filter((t) => t === 'ticket_assigned' || t === 'pr_linked_to_ticket').length;
+    jira.assignedIssues.mockResolvedValue([ticket]);
+    await syncUser(jiraUserId);
+
+    expect(eventTypes().filter((t) => t === 'ticket_assigned' || t === 'pr_linked_to_ticket').length).toBe(before);
   });
 });

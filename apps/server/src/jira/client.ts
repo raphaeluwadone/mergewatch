@@ -19,22 +19,23 @@ export async function exchangeToken(body: Record<string, string>): Promise<Token
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ client_id: env.jira.clientId, client_secret: env.jira.clientSecret, ...body }),
   });
-  if (!res.ok) throw new JiraAuthError(`Atlassian token endpoint returned ${res.status}`);
+  // 400/401 mean the grant itself was refused (invalid_grant); anything else is worth retrying later.
+  if (res.status === 400 || res.status === 401) throw new JiraAuthError(`Atlassian token endpoint returned ${res.status}`);
+  if (!res.ok) throw new Error(`Atlassian token endpoint returned ${res.status}`);
   return (await res.json()) as TokenResponse;
 }
 
 export function storeTokens(userId: number, tokens: TokenResponse, extra: Partial<typeof users.$inferInsert> = {}) {
-  db.update(users)
-    .set({
-      jiraAccessEnc: encrypt(tokens.access_token),
-      // Atlassian rotates refresh tokens; keep the old one if a response omits it.
-      ...(tokens.refresh_token ? { jiraRefreshEnc: encrypt(tokens.refresh_token) } : {}),
-      jiraExpiresAt: new Date(Date.now() + (tokens.expires_in - 60) * 1000).toISOString(),
-      jiraStatus: 'connected',
-      ...extra,
-    })
-    .where(eq(users.id, userId))
-    .run();
+  const values = {
+    jiraAccessEnc: encrypt(tokens.access_token),
+    // Atlassian rotates refresh tokens; keep the old one if a response omits it.
+    ...(tokens.refresh_token ? { jiraRefreshEnc: encrypt(tokens.refresh_token) } : {}),
+    jiraExpiresAt: new Date(Date.now() + (tokens.expires_in - 60) * 1000).toISOString(),
+    jiraStatus: 'connected' as const,
+    ...extra,
+  };
+  db.update(users).set(values).where(eq(users.id, userId)).run();
+  return values;
 }
 
 function markExpired(userId: number) {
@@ -45,13 +46,21 @@ async function accessToken(user: User, forceRefresh = false): Promise<string> {
   if (!user.jiraRefreshEnc || !user.jiraCloudId) throw new JiraAuthError('Jira not connected');
   const fresh = user.jiraAccessEnc && user.jiraExpiresAt && new Date(user.jiraExpiresAt) > new Date();
   if (fresh && !forceRefresh) return decrypt(user.jiraAccessEnc!);
+  let refreshToken: string;
   try {
-    const tokens = await exchangeToken({ grant_type: 'refresh_token', refresh_token: decrypt(user.jiraRefreshEnc) });
-    storeTokens(user.id, tokens);
+    refreshToken = decrypt(user.jiraRefreshEnc);
+  } catch {
+    markExpired(user.id);
+    throw new JiraAuthError('Stored Jira refresh token is unreadable');
+  }
+  try {
+    const tokens = await exchangeToken({ grant_type: 'refresh_token', refresh_token: refreshToken });
+    // A sync reuses one user object; without this, later calls would refresh again with the rotated-out token.
+    Object.assign(user, storeTokens(user.id, tokens));
     return tokens.access_token;
   } catch (err) {
-    markExpired(user.id);
-    throw err instanceof JiraAuthError ? err : new JiraAuthError(String(err));
+    if (err instanceof JiraAuthError) markExpired(user.id);
+    throw err;
   }
 }
 
