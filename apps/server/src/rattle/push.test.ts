@@ -9,7 +9,8 @@ vi.hoisted(() => {
 
 const { db, runMigrations } = await import('../sync/test-db.ts');
 const { events, prSources, prs, users } = await import('../db/schema.ts');
-const { encrypt } = await import('../crypto.ts');
+const { encrypt, sha256 } = await import('../crypto.ts');
+const { app } = await import('../app.ts');
 const { pushToRattle, rattlePayload } = await import('./push.ts');
 const { eq } = await import('drizzle-orm');
 
@@ -52,6 +53,7 @@ describe('rattlePayload', () => {
 
 describe('pushToRattle', () => {
   let userId = 0;
+  let prId = 0;
   const user = () => db.select().from(users).where(eq(users.id, userId)).get()!;
 
   beforeAll(() => {
@@ -67,7 +69,7 @@ describe('pushToRattle', () => {
       reviewRequestedFromMe: false, commentCount: 0, latestComments: [], checks: [{ name: 'e2e', status: 'failed', durationSec: 1, url: null, jobId: null }],
       createdAt: '2026-11-01T09:00:00Z', updatedAt: '2026-11-01T09:00:00Z', mergedAt: null,
     } satisfies PrSnapshot;
-    const prId = db.insert(prs).values({ userId, nodeId: 'PR_A', repo: 'acme/web', number: 7, snapshot: snap, snapshotHash: '' }).returning({ id: prs.id }).get().id;
+    prId = db.insert(prs).values({ userId, nodeId: 'PR_A', repo: 'acme/web', number: 7, snapshot: snap, snapshotHash: '' }).returning({ id: prs.id }).get().id;
     db.insert(prSources).values({ prId, source: 'auto' }).run();
     db.insert(events).values({ prId, type: 'check_failed', severity: 'attention', text: 'Check failed: e2e' }).run();
   });
@@ -99,5 +101,38 @@ describe('pushToRattle', () => {
     vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
     await pushToRattle(user());
     expect(user().rattleStatus).toBe('error');
+  });
+});
+
+describe('marking seen from Rattle', () => {
+  let userId = 0;
+  let prId = 0;
+  const seen = (token: string, id: number, eventId: number) =>
+    app.request(`/api/inbound/rattle/prs/${id}/seen`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${token}`, 'x-mergewatch': '1', 'content-type': 'application/json' },
+      body: JSON.stringify({ eventId }),
+    });
+  const lastSeen = () => db.select().from(prs).where(eq(prs.id, prId)).get()!.lastSeenEventId;
+
+  beforeAll(() => {
+    userId = db.insert(users).values({ githubId: 2, login: 'me2', rattleCallbackHash: sha256('mw_rattle_good') }).returning({ id: users.id }).get().id;
+    prId = db.insert(prs).values({ userId, nodeId: 'PR_B', repo: 'acme/web', number: 8, snapshot: {}, snapshotHash: '' }).returning({ id: prs.id }).get().id;
+  });
+
+  it('moves the seen marker to the event Rattle showed, never backwards', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
+    expect((await seen('mw_rattle_good', prId, 12)).status).toBe(200);
+    expect(lastSeen()).toBe(12);
+    await seen('mw_rattle_good', prId, 5);
+    expect(lastSeen()).toBe(12);
+  });
+
+  it('rejects unknown tokens and PRs that belong to someone else', async () => {
+    expect((await seen('mw_rattle_bad', prId, 20)).status).toBe(401);
+    const other = db.insert(users).values({ githubId: 3, login: 'other', rattleCallbackHash: sha256('mw_rattle_other') }).returning({ id: users.id }).get().id;
+    expect(other).toBeGreaterThan(0);
+    expect((await seen('mw_rattle_other', prId, 20)).status).toBe(404);
+    expect(lastSeen()).toBe(12);
   });
 });

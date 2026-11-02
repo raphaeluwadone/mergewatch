@@ -41,6 +41,8 @@ export const users = sqliteTable('users', {
   rattleEmail: text('rattle_email'),
   rattleStatus: text('rattle_status', { enum: ['not_connected', 'connected', 'error', 'unauthorized'] }).notNull().default('not_connected'),
   rattleLastPushAt: text('rattle_last_push_at'),
+  /** SHA-256 of the token Rattle sends back when the user ticks off a PR there. */
+  rattleCallbackHash: text('rattle_callback_hash').unique(),
   createdAt: text('created_at').notNull().default(now),
 });
 

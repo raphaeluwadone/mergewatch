@@ -6,6 +6,7 @@ import { githubAuth } from './auth/github.ts';
 import { jiraAuth } from './auth/jira.ts';
 import { requireAppHeader } from './auth/session.ts';
 import { api } from './routes/api.ts';
+import { rattleInbound } from './rattle/inbound.ts';
 import { demoAuth } from './demo/auth.ts';
 
 export const app = new Hono();
@@ -17,6 +18,8 @@ app.use('/auth/*', requireAppHeader);
 app.route('/auth', githubAuth);
 app.route('/auth', jiraAuth);
 if (env.demoMode) app.route('/auth', demoAuth);
+// Before /api, whose routes all need a session cookie.
+app.route('/api/inbound/rattle', rattleInbound);
 app.route('/api', api);
 
 app.get('/health', (c) => c.json({ ok: true }));
