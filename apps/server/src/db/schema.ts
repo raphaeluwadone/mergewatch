@@ -35,6 +35,12 @@ export const users = sqliteTable('users', {
   /** File name under data/sounds/, set when a custom sound is uploaded. */
   customSoundFile: text('custom_sound_file'),
   customSoundName: text('custom_sound_name'),
+  /** Base URL of a Rattle instance that gets this user's PRs pushed to it after each sync. */
+  rattleUrl: text('rattle_url'),
+  rattleTokenEnc: text('rattle_token_enc'),
+  rattleEmail: text('rattle_email'),
+  rattleStatus: text('rattle_status', { enum: ['not_connected', 'connected', 'error', 'unauthorized'] }).notNull().default('not_connected'),
+  rattleLastPushAt: text('rattle_last_push_at'),
   createdAt: text('created_at').notNull().default(now),
 });
 

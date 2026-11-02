@@ -270,3 +270,14 @@ export interface StreamMessage {
   type: 'sync';
   attention: { prId: string; repo: string; number: number; text: string }[];
 }
+
+export type RattleStatus = 'not_connected' | 'connected' | 'error' | 'unauthorized';
+
+/** Where this user's PRs are pushed after each sync. */
+export interface RattleConnection {
+  url: string | null;
+  status: RattleStatus;
+  /** The Rattle account the token belongs to. */
+  email: string | null;
+  lastPushAt: string | null;
+}

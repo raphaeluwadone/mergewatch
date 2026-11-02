@@ -14,6 +14,7 @@ import { deriveRole } from './status.ts';
 import { publish } from './stream.ts';
 import { shouldNotify, type NotifyItem } from '../push/messages.ts';
 import { notifyUser } from '../push/send.ts';
+import { pushToRattle } from '../rattle/push.ts';
 
 const inFlight = new Set<number>();
 const queued = new Set<number>();
@@ -295,6 +296,7 @@ async function sync(user: User, token: string) {
 
   publish(user.id, { type: 'sync', attention });
   void notifyUser(user, notify).catch((err) => console.error('Push failed:', err));
+  void pushToRattle(user).catch((err) => console.error('Rattle push failed:', err));
 }
 
 /** Status for tickets mentioned by tracked PRs that aren't assigned to the user. */

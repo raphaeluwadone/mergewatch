@@ -8,6 +8,7 @@ import { navigate, useLocation } from '../lib/router.ts';
 import { setPrefs, usePrefs } from '../lib/prefs.ts';
 import { Header } from '../components/Shell.tsx';
 import { RepoPicker, type RepoOption } from '../components/RepoPicker.tsx';
+import { RattleConnection } from '../components/RattleConnection.tsx';
 import { disablePush, enablePush, getPushState, type PushState } from '../lib/push.ts';
 
 function Toggle({ checked, onChange, label, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: string; disabled?: boolean }) {
@@ -151,6 +152,7 @@ export function Settings({ me, onTour }: { me: Me; onTour: () => void }) {
               </a>
             )}
           </div>
+          <RattleConnection statusLine={(ok, text) => <Status ok={ok}>{text}</Status>} />
           <div className="panel-row">
             <div>
               <div className="name">Slack</div>

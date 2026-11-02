@@ -4,7 +4,7 @@ import { and, eq, inArray, max } from 'drizzle-orm';
 import { parsePrUrl, type AddPrPreview, type DashboardResponse, type Me, type Settings, type Source } from '@mergewatch/shared';
 import { db } from '../db/client.ts';
 import { events, prSources, prs, sessions, trackedRepos, users } from '../db/schema.ts';
-import { decrypt } from '../crypto.ts';
+import { decrypt, encrypt } from '../crypto.ts';
 import { requireUser, type AppEnv, type User } from '../auth/session.ts';
 import { disconnectJira } from '../auth/jira.ts';
 import { GithubForbiddenError, GithubNotFoundError } from '../github/client.ts';
@@ -21,6 +21,7 @@ import { detailView, listViews } from '../views.ts';
 import { hasSubscriptions, removeSubscription, saveSubscription, sendTestPush, vapidPublicKey } from '../push/send.ts';
 import { MAX_SOUND_BYTES, playSound, saveCustomSound, soundPath, soundSupported, systemSounds } from '../push/sound.ts';
 import { bodyLimit } from 'hono/body-limit';
+import { pushToRattle, rattleConnection, rattleFetch, RattleAuthError } from '../rattle/push.ts';
 
 export const api = new Hono<AppEnv>();
 api.use('*', requireUser);
@@ -128,6 +129,7 @@ api.post('/prs/:id/mute', async (c) => {
   if (!id) return c.json({ error: 'not_found' }, 404);
   const { muted } = await body(c);
   db.update(prs).set({ muted: muted !== false }).where(eq(prs.id, id)).run();
+  void pushToRattle(c.get('user')).catch((err) => console.error('Rattle push failed:', err));
   return c.json({ ok: true });
 });
 
@@ -207,6 +209,7 @@ api.post('/prs/:id/dismiss', (c) => {
   const id = prId(c);
   if (!id) return c.json({ error: 'not_found' }, 404);
   db.update(prs).set({ dismissed: true }).where(eq(prs.id, id)).run();
+  void pushToRattle(c.get('user')).catch((err) => console.error('Rattle push failed:', err));
   return c.json({ ok: true });
 });
 
@@ -216,6 +219,7 @@ api.post('/prs/:id/untrack', (c) => {
   db.delete(prSources).where(and(eq(prSources.prId, id), eq(prSources.source, 'manual'))).run();
   const remaining = db.select({ source: prSources.source }).from(prSources).where(eq(prSources.prId, id)).all();
   if (remaining.length === 0) db.update(prs).set({ dismissed: true }).where(eq(prs.id, id)).run();
+  void pushToRattle(c.get('user')).catch((err) => console.error('Rattle push failed:', err));
   return c.json({ ok: true });
 });
 
@@ -392,6 +396,49 @@ api.post('/jira/disconnect', (c) => {
   if (jiraOnly.length) db.delete(prSources).where(and(inArray(prSources.prId, jiraOnly), eq(prSources.source, 'jira'))).run();
   requestSync(userId);
   return c.json({ ok: true });
+});
+
+api.get('/rattle', (c) => c.json(rattleConnection(c.get('user'))));
+
+api.put('/rattle', async (c) => {
+  const user = c.get('user');
+  const { url, token } = await body(c);
+  let base: URL;
+  try {
+    base = new URL(String(url));
+  } catch {
+    return c.json({ error: 'invalid_url' }, 400);
+  }
+  if (base.protocol !== 'http:' && base.protocol !== 'https:') return c.json({ error: 'invalid_url' }, 400);
+  if (typeof token !== 'string' || !/^rattle_mw_[A-Za-z0-9_-]{20,100}$/.test(token)) return c.json({ error: 'invalid_token' }, 400);
+
+  let email: string;
+  try {
+    const res = await rattleFetch(base.origin, token, '/whoami');
+    email = String(((await res.json()) as { email?: unknown }).email ?? '');
+  } catch (err) {
+    return c.json({ error: err instanceof RattleAuthError ? 'invalid_token' : 'unreachable' }, 400);
+  }
+  db.update(users)
+    .set({ rattleUrl: base.origin, rattleTokenEnc: encrypt(token), rattleEmail: email, rattleStatus: 'connected', rattleLastPushAt: null })
+    .where(eq(users.id, user.id))
+    .run();
+  const updated = db.select().from(users).where(eq(users.id, user.id)).get()!;
+  await pushToRattle(updated);
+  return c.json(rattleConnection(db.select().from(users).where(eq(users.id, user.id)).get()!));
+});
+
+api.delete('/rattle', async (c) => {
+  const user = c.get('user');
+  // Best effort: clear what Rattle shows before forgetting the token.
+  if (user.rattleUrl && user.rattleTokenEnc) {
+    await rattleFetch(user.rattleUrl, decrypt(user.rattleTokenEnc), '/prs', { method: 'PUT', body: { prs: [] } }).catch(() => {});
+  }
+  db.update(users)
+    .set({ rattleUrl: null, rattleTokenEnc: null, rattleEmail: null, rattleStatus: 'not_connected', rattleLastPushAt: null })
+    .where(eq(users.id, user.id))
+    .run();
+  return c.json(rattleConnection(db.select().from(users).where(eq(users.id, user.id)).get()!));
 });
 
 api.get('/push', (c) => c.json({ publicKey: vapidPublicKey(), subscriptions: hasSubscriptions(c.get('user').id) }));
